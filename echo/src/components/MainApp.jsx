@@ -385,7 +385,9 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           (webrtc.peers || []).forEach((p) => {
             if (p.stream && p.stream.getVideoTracks().length > 0) {
               const cache = peerVideoStreamCacheRef.current;
-              p.stream.getVideoTracks().forEach((track, i) => {
+              p.stream.getVideoTracks()
+                .filter((track) => track.readyState === "live")
+                .forEach((track, i) => {
                 const key = `${p.userId}-${track.id || i}`;
                 let stream = cache[key];
                 if (!stream || !stream.getTracks().includes(track)) {

@@ -312,6 +312,7 @@ export function useWebRTC(baseUrl, token, api) {
                 existingPc.close();
                 delete peerConnectionsRef.current[fromId];
               }
+              delete peerStreamsRef.current[fromId];
               const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
               peerConnectionsRef.current[fromId] = pc;
               pc.onconnectionstatechange = () => {
@@ -345,7 +346,6 @@ export function useWebRTC(baseUrl, token, api) {
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               ws.send(JSON.stringify({ type: "answer", to_user_id: fromId, answer }));
-              addPeer(fromId, data.from_display_name || "User", null, false, data.from_avatar_emoji || "🐱");
               return;
             }
 
