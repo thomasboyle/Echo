@@ -1,0 +1,68 @@
+.root {
+  background: var(--green);
+  color: white;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.channelName {
+  font-size: 13px;
+  opacity: 0.95;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.btn {
+  padding: 6px 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.btn.active {
+  background: var(--red);
+}
+
+.leaveBtn {
+  padding: 6px 12px;
+  border: none;
+  background: var(--red);
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.leaveBtn:hover {
+  filter: brightness(1.1);
+}

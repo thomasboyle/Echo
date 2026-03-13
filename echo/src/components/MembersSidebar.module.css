@@ -1,0 +1,93 @@
+.root {
+  padding: 12px 16px;
+}
+
+.header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 12px;
+}
+
+.section {
+  padding: 8px 0;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 12px 8px;
+  display: block;
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.member:hover {
+  background: var(--bg-hover);
+}
+
+.memberAvatar,
+.memberAvatarOffline {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.memberAvatar {
+  background: var(--bg-mid);
+}
+
+.memberAvatarOffline {
+  background: var(--bg-darkest);
+  opacity: 0.7;
+}
+
+.statusGreen {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.statusGray {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.memberName,
+.memberNameOffline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberNameOffline {
+  color: var(--text-muted);
+}

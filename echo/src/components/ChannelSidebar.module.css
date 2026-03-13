@@ -1,0 +1,351 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-dark);
+}
+
+.header {
+  padding: 16px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+
+.serverHeaderBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.12s ease;
+}
+
+.serverHeaderBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.serverHeaderBtn:hover .chevron {
+  color: var(--text-secondary);
+}
+
+.serverHeaderBtn:focus {
+  outline: none;
+}
+
+.dmTitle {
+  font-size: 15px;
+}
+
+.serverName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.serverMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-mid);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.serverMenuItem,
+.serverMenuDelete {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.serverMenuItem:hover {
+  background: var(--bg-hover);
+}
+
+.serverMenuDelete {
+  color: var(--red);
+}
+
+.serverMenuDelete:hover {
+  background: rgba(242, 63, 67, 0.15);
+  color: #ff6b6b;
+}
+
+.divider {
+  height: 1px;
+  background: var(--bg-hover);
+  margin: 0 8px;
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 12px 8px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.addChannel {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.addChannel:hover {
+  color: var(--text-primary);
+}
+
+.channelList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.channelItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.channelItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.channelItem.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.channelItem.activeVoice {
+  color: var(--green);
+}
+
+.voiceChannelName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.voiceTimer {
+  flex-shrink: 0;
+  color: var(--green);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+.voiceChannelUsers {
+  padding: 2px 0 4px 8px;
+  margin-left: 16px;
+  border-left: 2px solid var(--bg-hover);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.voiceChannelUser {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 0;
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: background-color 0.12s ease;
+}
+
+.voiceChannelUser:hover {
+  background: var(--bg-hover);
+}
+
+.voiceChannelUserAvatar {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--bg-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.voiceChannelUserName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voiceChannelUserContextMenu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-mid);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.voiceChannelUserContextMenuItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.voiceChannelUserContextMenuItem:hover {
+  background: var(--bg-hover);
+}
+
+.voiceChannelUserContextMenuItem.danger {
+  color: var(--red);
+}
+
+.voiceChannelUserContextMenuItem.danger:hover {
+  background: rgba(242, 63, 67, 0.15);
+  color: #ff6b6b;
+}
+
+.voiceChannelContextSection {
+  margin-top: 4px;
+  padding: 6px 8px 4px;
+  border-top: 1px solid var(--bg-hover);
+}
+
+.voiceChannelBandwidthLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.voiceChannelBandwidthSlider {
+  width: 100%;
+}
+
+.voiceError {
+  font-size: 11px;
+  color: var(--red, #e74c3c);
+  padding: 6px 16px 8px;
+  line-height: 1.3;
+}
+
+.dmAvatar,
+.userAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--bg-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.userPanel {
+  padding: 8px 12px;
+  background: var(--bg-darkest);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.userName {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userPanel button {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px;
+}
+
+.userPanel button:hover {
+  color: var(--text-primary);
+}
+
+.spacer {
+  flex: 1;
+  min-height: 0;
+}

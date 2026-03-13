@@ -1,0 +1,99 @@
+.serverBtn {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--bg-mid);
+  color: var(--text-primary);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  position: relative;
+  transition: transform 0.1s, border-radius 0.15s;
+}
+
+.serverBtn:hover {
+  background: var(--accent);
+  border-radius: 16px;
+  transform: scale(1.05);
+}
+
+.serverBtn.active {
+  border-radius: 16px;
+  background: var(--accent);
+}
+
+.serverBtn.active::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: white;
+  border-radius: 0 4px 4px 0;
+}
+
+.emoji {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.homeIcon {
+  font-size: 22px;
+}
+
+.unread {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  background: var(--red);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-darkest);
+}
+
+.divider {
+  width: 32px;
+  height: 2px;
+  background: var(--bg-hover);
+  border-radius: 1px;
+  margin: 8px auto 8px;
+}
+
+.addBtn {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--bg-mid);
+  color: var(--green);
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  transition: transform 0.1s, color 0.1s;
+}
+
+.addBtn:hover {
+  background: var(--green);
+  color: white;
+  transform: scale(1.05);
+}
+
+.joinIcon {
+  font-size: 18px;
+  font-weight: 700;
+}

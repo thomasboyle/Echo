@@ -1,0 +1,398 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.channelHeader {
+  padding: 16px;
+  border-bottom: 1px solid var(--bg-darkest);
+}
+
+.channelName {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: none;
+}
+
+.messageList::-webkit-scrollbar {
+  display: none;
+}
+
+.loading {
+  color: var(--text-muted);
+  padding: 16px;
+}
+
+.loadMore {
+  align-self: center;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border: none;
+  background: var(--bg-light);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.loadMore:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.messageGroup {
+  display: flex;
+  gap: 16px;
+  padding: 2px 0;
+}
+
+.messageGroup:hover {
+  background: var(--bg-hover);
+  margin: 0 -8px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.messageAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--bg-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.messageBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.messageHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.displayName {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.time {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.messageContent {
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.typing {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+.inputWrap {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pendingAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pendingThumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-dark);
+}
+
+.pendingThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.removeThumb {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--red);
+  color: white;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.attachWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.attachMenu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: -2px;
+  min-width: 160px;
+  padding: 4px 0;
+  background: var(--bg-dark);
+  border: 1px solid var(--bg-darkest);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.attachMenuItem {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.attachMenuItem:hover {
+  background: var(--bg-hover);
+}
+
+.attachBtn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-light);
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.attachmentList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.attachmentLink {
+  display: block;
+  max-width: 400px;
+  max-height: 300px;
+}
+
+.attachmentImage {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  vertical-align: top;
+}
+
+.input {
+  width: 100%;
+  min-height: 44px;
+  max-height: 200px;
+  padding: 12px 14px;
+  background: var(--bg-light);
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus {
+  outline: none;
+}
+
+.charWarn {
+  font-size: 12px;
+  color: var(--yellow);
+}
+
+.charErr {
+  font-size: 12px;
+  color: var(--red);
+}
+
+.gifSearchPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-dark);
+  border: 1px solid var(--bg-darkest);
+  border-radius: var(--radius-md);
+}
+
+.gifSearchInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gifSearchInput {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--bg-light);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.gifSearchInput:focus {
+  outline: none;
+}
+
+.gifSearchClose {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--bg-light);
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gifSearchClose:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gifResultsWrap {
+  min-height: 80px;
+  position: relative;
+}
+
+.gifSearchStatus {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.gifResultsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-height: 180px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-items: start;
+  scrollbar-width: none;
+}
+
+.gifResultsRow::-webkit-scrollbar {
+  display: none;
+}
+
+.gifThumb {
+  min-width: 0;
+  min-height: 0;
+  height: 100px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-darkest);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gifThumb img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.gifThumb:hover {
+  outline: 2px solid var(--accent);
+}
