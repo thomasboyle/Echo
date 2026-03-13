@@ -1,6 +1,6 @@
 [package]
 name = "nexus"
-version = "1.0.8"
+version = "1.0.9"
 description = "Echo - Self-hosted Discord-like communications"
 authors = ["Echo"]
 edition = "2021"
