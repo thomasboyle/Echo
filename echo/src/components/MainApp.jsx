@@ -465,7 +465,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             if (!currentKeys.has(k)) delete cache[k];
           }
 
-          const hasVideo = cameraOn || webrtc.isScreensharing;
+          const hasVideo = videoEntries.length > 0;
           const focusedEntry = focusedVideoKey ? videoEntries.find((e) => e.key === focusedVideoKey) : null;
           const showFocusedView = hasVideo && focusedEntry;
 
