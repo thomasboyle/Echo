@@ -23,7 +23,7 @@ function getStoredAudioOutputId() {
   }
 }
 
-export function useWebRTC(baseUrl, token, api) {
+export function useWebRTC(baseUrl, token, api, onActivity) {
   const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
@@ -46,6 +46,9 @@ export function useWebRTC(baseUrl, token, api) {
   const audioElementsRef = useRef({});
   const iceCandidateQueueRef = useRef({});
   const screenStreamRef = useRef(null);
+  const notifyActivity = useCallback(() => {
+    onActivity?.();
+  }, [onActivity]);
 
   const addPeer = useCallback((userId, displayName, stream = null, isSpeaking = false, avatarEmoji = "🐱") => {
     setPeers((prev) => {
@@ -153,7 +156,8 @@ export function useWebRTC(baseUrl, token, api) {
       serverVoicePeersIntervalRef.current = null;
     }
     setIsInVoice(false);
-  }, [api]);
+    notifyActivity();
+  }, [api, notifyActivity]);
 
   const joinVoice = useCallback(
     async (channelId) => {
@@ -189,6 +193,7 @@ export function useWebRTC(baseUrl, token, api) {
         signalingWsRef.current = ws;
         setCurrentChannelId(channelId);
         setIsInVoice(true);
+        notifyActivity();
 
         const existingPeers = await api.getVoicePeers(channelId).catch(() => []);
         setServerVoicePeers(existingPeers || []);
@@ -260,11 +265,13 @@ export function useWebRTC(baseUrl, token, api) {
 
             if (data.type === "force_disconnect") {
               leaveVoice();
+              notifyActivity();
               return;
             }
 
             if (data.type === "peer_left") {
               removePeer(data.user_id);
+              notifyActivity();
               return;
             }
 
@@ -303,6 +310,7 @@ export function useWebRTC(baseUrl, token, api) {
               await pc.setLocalDescription(offer);
               ws.send(JSON.stringify({ type: "offer", to_user_id: newUserId, offer }));
               addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
+              notifyActivity();
               return;
             }
 
@@ -419,6 +427,7 @@ export function useWebRTC(baseUrl, token, api) {
       setIsScreensharing(true);
       stream.getVideoTracks()[0].onended = () => stopScreenshare();
       setTimeout(() => invoke("hide_screen_sharing_indicator").catch(() => {}), 1);
+      notifyActivity();
       const ws = signalingWsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
@@ -433,6 +442,7 @@ export function useWebRTC(baseUrl, token, api) {
       }
     } catch (err) {
       setIsScreensharing(false);
+      notifyActivity();
       setLocalScreenStream(null);
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -460,7 +470,8 @@ export function useWebRTC(baseUrl, token, api) {
     screenStreamRef.current = null;
     setLocalScreenStream(null);
     setIsScreensharing(false);
-  }, []);
+    notifyActivity();
+  }, [notifyActivity]);
 
   const toggleMute = useCallback(() => {
     if (!localStreamRef.current) return;

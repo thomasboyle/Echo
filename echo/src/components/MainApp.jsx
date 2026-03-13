@@ -83,9 +83,39 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const [focusedVideoKey, setFocusedVideoKey] = useState(null);
   const [activeVoiceTimers, setActiveVoiceTimers] = useState({});
   const [activeVoiceUsers, setActiveVoiceUsers] = useState({});
+  const refreshInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
 
   const ws = useWebSocket(baseUrl.replace(/^http/, "ws"), token);
-  const webrtc = useWebRTC(baseUrl, token, api);
+  const webrtc = useWebRTC(baseUrl, token, api, () => {
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
+    refreshInFlightRef.current = true;
+    const tasks = [loadServers(), loadDMs()];
+    if (view === "servers" && selectedServerId) {
+      tasks.push(loadChannels(selectedServerId), loadMembers(selectedServerId), refreshVoiceActive());
+    }
+    Promise.allSettled(tasks).finally(() => {
+      refreshInFlightRef.current = false;
+      if (refreshPendingRef.current) {
+        refreshPendingRef.current = false;
+        setTimeout(() => {
+          if (!refreshInFlightRef.current) {
+            refreshInFlightRef.current = true;
+            const pendingTasks = [loadServers(), loadDMs()];
+            if (view === "servers" && selectedServerId) {
+              pendingTasks.push(loadChannels(selectedServerId), loadMembers(selectedServerId), refreshVoiceActive());
+            }
+            Promise.allSettled(pendingTasks).finally(() => {
+              refreshInFlightRef.current = false;
+            });
+          }
+        }, 0);
+      }
+    });
+  });
   const webrtcRef = useRef(webrtc);
   webrtcRef.current = webrtc;
 
@@ -233,12 +263,37 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     });
   }, [view, selectedServerId, api]);
 
+  const refreshUiState = useCallback(() => {
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
+    refreshInFlightRef.current = true;
+    const tasks = [loadServers(), loadDMs()];
+    if (view === "servers" && selectedServerId) {
+      tasks.push(loadChannels(selectedServerId), loadMembers(selectedServerId), refreshVoiceActive());
+    }
+    Promise.allSettled(tasks).finally(() => {
+      refreshInFlightRef.current = false;
+      if (refreshPendingRef.current) {
+        refreshPendingRef.current = false;
+        setTimeout(refreshUiState, 0);
+      }
+    });
+  }, [view, selectedServerId, loadServers, loadDMs, loadChannels, loadMembers, refreshVoiceActive]);
+
   useEffect(() => {
     if (view !== "servers" || !selectedServerId || !api) return;
     refreshVoiceActive();
     const id = setInterval(refreshVoiceActive, 2500);
     return () => clearInterval(id);
   }, [view, selectedServerId, api, refreshVoiceActive]);
+
+  useEffect(() => {
+    if (!api) return;
+    const id = setInterval(refreshUiState, 1500);
+    return () => clearInterval(id);
+  }, [api, refreshUiState]);
 
   useEffect(() => {
     if (!focusedVideoKey) return;
@@ -455,6 +510,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             }
           }}
           onMembersRefresh={selectedServerId ? () => loadMembers(selectedServerId) : undefined}
+          onActivity={refreshUiState}
         />
                   </div>
                   {hasVideo && (

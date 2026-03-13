@@ -73,6 +73,7 @@ export default function MessageArea({
   onUnreadClear,
   onMessageReceived,
   onMembersRefresh,
+  onActivity,
 }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -101,8 +102,10 @@ export default function MessageArea({
   const currentUserId = user?.id;
   const onMessageReceivedRef = useRef(onMessageReceived);
   const onMembersRefreshRef = useRef(onMembersRefresh);
+  const onActivityRef = useRef(onActivity);
   onMessageReceivedRef.current = onMessageReceived;
   onMembersRefreshRef.current = onMembersRefresh;
+  onActivityRef.current = onActivity;
 
   const loadMessages = useCallback(
     async (before = null) => {
@@ -154,6 +157,7 @@ export default function MessageArea({
           return [...rest, normalized];
         });
         onMessageReceivedRef.current?.(data);
+        onActivityRef.current?.();
         if (scrollAtBottomRef.current && listRef.current) {
           requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
         }
@@ -169,8 +173,14 @@ export default function MessageArea({
         });
         setTimeout(() => setTyping((t) => t.filter((x) => x.user?.id !== data.user?.id)), 5000);
       },
-      onUserJoin: () => onMembersRefreshRef.current?.(),
-      onUserLeave: () => onMembersRefreshRef.current?.(),
+      onUserJoin: () => {
+        onMembersRefreshRef.current?.();
+        onActivityRef.current?.();
+      },
+      onUserLeave: () => {
+        onMembersRefreshRef.current?.();
+        onActivityRef.current?.();
+      },
     });
   }, [user, currentUserId]);
 
