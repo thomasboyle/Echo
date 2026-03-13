@@ -78,6 +78,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const [cameraOn, setCameraOn] = useState(false);
   const syncRetryDoneRef = useRef(false);
   const focusedVideoContainerRef = useRef(null);
+  const videoPanelInnerRef = useRef(null);
   const peerVideoStreamCacheRef = useRef(Object.create(null));
   const [focusedVideoKey, setFocusedVideoKey] = useState(null);
   const [activeVoiceTimers, setActiveVoiceTimers] = useState({});
@@ -458,7 +459,15 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
                   </div>
                   {hasVideo && (
           <div className={styles.videoPanel} aria-label="Video streams">
-            <div className={styles.videoPanelInner}>
+            <button
+              type="button"
+              className={styles.videoPanelScrollBtn}
+              aria-label="Scroll video feeds left"
+              onClick={() => videoPanelInnerRef.current?.scrollBy({ left: -328, behavior: "smooth" })}
+            >
+              &#x2039;
+            </button>
+            <div ref={videoPanelInnerRef} className={styles.videoPanelInner}>
               {videoEntries.map((e) => (
                 <VideoSlot
                   key={e.key}
@@ -469,6 +478,14 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
                 />
               ))}
             </div>
+            <button
+              type="button"
+              className={styles.videoPanelScrollBtnRight}
+              aria-label="Scroll video feeds right"
+              onClick={() => videoPanelInnerRef.current?.scrollBy({ left: 328, behavior: "smooth" })}
+            >
+              &#x203A;
+            </button>
           </div>
                   )}
                 </>
