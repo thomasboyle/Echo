@@ -49,6 +49,8 @@ jobs:
   build-release:
     needs: version-bump
     runs-on: windows-latest
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +64,14 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.2"
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: echo/node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('echo/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
