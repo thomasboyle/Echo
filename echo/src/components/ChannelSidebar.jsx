@@ -115,6 +115,12 @@ export default function ChannelSidebar({
     onModalData && onModalData({ serverId: selectedServerId });
   };
 
+  const handleRenameServer = () => {
+    setServerMenuOpen(false);
+    onOpenModal("renameServer");
+    onModalData && onModalData({ serverId: selectedServerId, serverName });
+  };
+
   const handleDeleteServer = () => {
     setServerMenuOpen(false);
     onOpenModal("confirmDeleteServer");
@@ -179,6 +185,9 @@ export default function ChannelSidebar({
           <div className={styles.serverMenu}>
             <button type="button" className={styles.serverMenuItem} onClick={handleInvite}>
               Invite
+            </button>
+            <button type="button" className={styles.serverMenuItem} onClick={handleRenameServer}>
+              Rename server
             </button>
             <button type="button" className={styles.serverMenuDelete} onClick={handleDeleteServer}>
               Delete server

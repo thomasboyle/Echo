@@ -279,6 +279,10 @@ class JoinServerBody(BaseModel):
     invite_code: str
 
 
+class UpdateServerBody(BaseModel):
+    name: str
+
+
 class CreateChannelBody(BaseModel):
     name: str
     type: str
@@ -625,6 +629,24 @@ async def delete_server(server_id: str, authorization: str | None = Header(defau
         await db.execute("DELETE FROM server_members WHERE server_id = ?", (server_id,))
         await db.execute("DELETE FROM channels WHERE server_id = ?", (server_id,))
         await db.execute("DELETE FROM servers WHERE id = ?", (server_id,))
+        await db.commit()
+    return {"ok": True}
+
+
+@app.patch("/servers/{server_id}")
+async def update_server(server_id: str, body: UpdateServerBody, authorization: str | None = Header(default=None)):
+    user_id = await get_current_user(authorization)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT owner_id FROM servers WHERE id = ?", (server_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Server not found")
+        if row[0] != user_id:
+            raise HTTPException(status_code=403, detail="Only the server owner can rename it")
+        name = (body.name or "").strip() or "Server"
+        await db.execute("UPDATE servers SET name = ? WHERE id = ?", (name, server_id))
         await db.commit()
     return {"ok": True}
 

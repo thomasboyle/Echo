@@ -83,6 +83,12 @@ function createApi(baseUrl, token) {
         method: "DELETE",
         headers: authHeaders(),
       }).then(parseJson),
+    updateServer: (serverId, name) =>
+      fetch(`${base}/servers/${serverId}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ name: (name || "").trim() || "Server" }),
+      }).then(parseJson),
     getChannels: (serverId) =>
       fetch(`${base}/servers/${serverId}/channels`, { headers: authHeaders() }).then(parseJson),
     getVoiceActive: (serverId) =>

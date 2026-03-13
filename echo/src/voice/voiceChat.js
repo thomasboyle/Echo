@@ -34,6 +34,7 @@ export function useWebRTC(baseUrl, token, api) {
   const [localStream, setLocalStream] = useState(null);
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const [isScreensharing, setIsScreensharing] = useState(false);
+  const [hasVideoSource, setHasVideoSource] = useState(false);
   const currentChannelIdRef = useRef(null);
   currentChannelIdRef.current = currentChannelId;
   const serverVoicePeersIntervalRef = useRef(null);
@@ -142,6 +143,7 @@ export function useWebRTC(baseUrl, token, api) {
     }
     setLocalStream(null);
     setLocalScreenStream(null);
+    setHasVideoSource(false);
     setIsScreensharing(false);
     setCurrentChannelId(null);
     setPeers([]);
@@ -166,12 +168,18 @@ export function useWebRTC(baseUrl, token, api) {
       }
       try {
         const audioInputId = getStoredAudioInputId();
-        const constraints = {
-          audio: audioInputId ? { deviceId: audioInputId } : true,
-          video: { width: 640, height: 480 },
-        };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const audioConstraint = audioInputId ? { deviceId: audioInputId } : true;
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraint,
+            video: { width: 640, height: 480 },
+          });
+        } catch (videoErr) {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
+        }
         stream.getVideoTracks().forEach((t) => (t.enabled = false));
+        setHasVideoSource(stream.getVideoTracks().length > 0);
         localStreamRef.current = stream;
         setLocalStream(stream);
         await api.joinVoice(channelId);
@@ -389,6 +397,7 @@ export function useWebRTC(baseUrl, token, api) {
           localStreamRef.current = null;
         }
         setLocalStream(null);
+        setHasVideoSource(false);
         setIsInVoice(false);
         setCurrentChannelId(null);
         throw err;
@@ -490,6 +499,7 @@ export function useWebRTC(baseUrl, token, api) {
     localStream,
     localScreenStream,
     isScreensharing,
+    hasVideoSource,
     joinVoice,
     leaveVoice,
     toggleMute,

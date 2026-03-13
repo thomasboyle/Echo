@@ -2,7 +2,7 @@ import React from "react";
 import styles from "./VoiceBar.module.css";
 
 export default function VoiceBar({ channelName, user, webrtc, cameraOn, onCameraToggle, onRefreshVoiceActive }) {
-  const { isMuted, isDeafened, leaveVoice, toggleMute, toggleDeafen, resumeRemoteAudio, isScreensharing, startScreenshare, stopScreenshare } = webrtc || {};
+  const { isMuted, isDeafened, leaveVoice, toggleMute, toggleDeafen, resumeRemoteAudio, isScreensharing, startScreenshare, stopScreenshare, hasVideoSource } = webrtc || {};
 
   const handleVoiceAction = (fn) => () => {
     if (resumeRemoteAudio) resumeRemoteAudio();
@@ -39,14 +39,16 @@ export default function VoiceBar({ channelName, user, webrtc, cameraOn, onCamera
           >
             Deafen
           </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${cameraOn ? styles.active : ""}`}
-            onClick={() => onCameraToggle?.()}
-            title="Camera"
-          >
-            Camera
-          </button>
+          {hasVideoSource !== false && (
+            <button
+              type="button"
+              className={`${styles.btn} ${cameraOn ? styles.active : ""}`}
+              onClick={() => onCameraToggle?.()}
+              title="Camera"
+            >
+              Camera
+            </button>
+          )}
           <button
             type="button"
             className={`${styles.btn} ${isScreensharing ? styles.active : ""}`}

@@ -366,7 +366,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
       <main className={styles.main}>
         {(() => {
           const videoEntries = [];
-          if (cameraOn && webrtc.localStream) {
+          if (cameraOn && webrtc.localStream && webrtc.hasVideoSource) {
             videoEntries.push({
               key: "local-cam",
               stream: webrtc.localStream,
@@ -528,6 +528,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           setChannels([]);
           setMembers([]);
         }}
+        onServerRenamed={loadServers}
         onChannelCreated={(serverId) => serverId && loadChannels(serverId)}
         onJoinServer={loadServers}
         onProfileSaved={onProfileSaved}

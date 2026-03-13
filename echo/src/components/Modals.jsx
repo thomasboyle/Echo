@@ -13,6 +13,7 @@ export default function Modals({
   onClose,
   onServerCreated,
   onServerDeleted,
+  onServerRenamed,
   onChannelCreated,
   onJoinServer,
   onProfileSaved,
@@ -28,6 +29,7 @@ export default function Modals({
   const [createChannelName, setCreateChannelName] = useState("");
   const [createChannelType, setCreateChannelType] = useState("text");
   const [renameChannelName, setRenameChannelName] = useState("");
+  const [renameServerName, setRenameServerName] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -39,6 +41,7 @@ export default function Modals({
   useEffect(() => {
     if (modal === "createChannel" && data.type) setCreateChannelType(data.type);
     if (modal === "renameChannel" && data.channel) setRenameChannelName(data.channel.name || "");
+    if (modal === "renameServer" && data.serverName != null) setRenameServerName(data.serverName || "");
     if (!modal) setError("");
   }, [modal, data]);
 
@@ -139,6 +142,26 @@ export default function Modals({
       await api.updateChannel(serverId, channel.id, renameChannelName.trim());
       setRenameChannelName("");
       onChannelCreated?.(serverId);
+      onClose();
+    } catch (e) {
+      setError(e.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRenameServer = async () => {
+    if (!api) return;
+    setError("");
+    if (!serverId || !renameServerName.trim()) {
+      setError("Enter server name");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.updateServer(serverId, renameServerName.trim());
+      setRenameServerName("");
+      onServerRenamed?.();
       onClose();
     } catch (e) {
       setError(e.message || "Failed");
@@ -336,6 +359,22 @@ export default function Modals({
             />
             {error && <div className={styles.error}>{error}</div>}
             <button className={styles.primary} onClick={handleRenameChannel} disabled={loading}>
+              {loading ? "..." : "Rename"}
+            </button>
+          </>
+        )}
+
+        {modal === "renameServer" && (
+          <>
+            <h2 className={styles.title}>Rename Server</h2>
+            <input
+              className={styles.input}
+              placeholder="Server name"
+              value={renameServerName}
+              onChange={(e) => setRenameServerName(e.target.value)}
+            />
+            {error && <div className={styles.error}>{error}</div>}
+            <button className={styles.primary} onClick={handleRenameServer} disabled={loading}>
               {loading ? "..." : "Rename"}
             </button>
           </>
