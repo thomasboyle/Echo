@@ -46,6 +46,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const audioElementsRef = useRef({});
   const iceCandidateQueueRef = useRef({});
   const screenStreamRef = useRef(null);
+  const myUserIdRef = useRef(null);
+  const shouldInitiateOffer = useCallback((localUserId, remoteUserId) => {
+    if (!localUserId || !remoteUserId) return true;
+    return String(localUserId).localeCompare(String(remoteUserId)) < 0;
+  }, []);
   const notifyActivity = useCallback(() => {
     onActivity?.();
   }, [onActivity]);
@@ -144,6 +149,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
     }
+    myUserIdRef.current = null;
     setLocalStream(null);
     setLocalScreenStream(null);
     setHasVideoSource(false);
@@ -189,6 +195,12 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         localStreamRef.current = stream;
         setLocalStream(stream);
         await api.joinVoice(channelId);
+        let myId = null;
+        try {
+          const me = await api.getMe();
+          myId = me?.id || null;
+        } catch (_) {}
+        myUserIdRef.current = myId;
         const url = baseUrl.replace(/^http/, "ws").replace(/\/$/, "");
         const wsUrl = `${url}/voice-signal/${channelId}?token=${encodeURIComponent(token)}`;
         const ws = new WebSocket(wsUrl);
@@ -217,6 +229,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
           for (const p of peerList || []) {
             if (!p?.id || (myId && p.id === myId)) continue;
             const peerId = p.id;
+            const amOfferer = shouldInitiateOffer(myId, peerId);
+            if (!amOfferer) {
+              addPeer(peerId, p.display_name || "User", null, false, p.avatar_emoji || "🐱");
+              continue;
+            }
             if (peerConnectionsRef.current[peerId]) continue;
             const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
             peerConnectionsRef.current[peerId] = pc;
@@ -281,6 +298,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
             if (data.type === "peer_joined") {
               const newUserId = data.user_id;
+              if (!shouldInitiateOffer(myUserIdRef.current, newUserId)) {
+                addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
+                notifyActivity();
+                return;
+              }
               if (peerConnectionsRef.current[newUserId]) return;
               const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
               peerConnectionsRef.current[newUserId] = pc;
@@ -385,11 +407,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         };
 
         ws.onopen = async () => {
-          let myId = null;
-          try {
-            const me = await api.getMe();
-            myId = me?.id;
-          } catch (_) {}
+          const myId = myUserIdRef.current;
           await sendOffersToPeers(existingPeers, myId, signalingWsRef);
           setTimeout(async () => {
             const fresh = await api.getVoicePeers(channelId).catch(() => []);
@@ -415,7 +433,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         throw err;
       }
     },
-    [baseUrl, token, api, leaveVoice, addPeer, removePeer, playRemoteStream, mergeTrackIntoPeerStream]
+    [baseUrl, token, api, leaveVoice, addPeer, removePeer, playRemoteStream, mergeTrackIntoPeerStream, notifyActivity, shouldInitiateOffer]
   );
 
   const setCameraEnabled = useCallback((enabled) => {
