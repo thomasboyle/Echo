@@ -81,6 +81,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const videoPanelInnerRef = useRef(null);
   const peerVideoStreamCacheRef = useRef(Object.create(null));
   const [focusedVideoKey, setFocusedVideoKey] = useState(null);
+  const [videoPanelOverflowing, setVideoPanelOverflowing] = useState(false);
   const [activeVoiceTimers, setActiveVoiceTimers] = useState({});
   const [activeVoiceUsers, setActiveVoiceUsers] = useState({});
   const refreshInFlightRef = useRef(false);
@@ -309,6 +310,30 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [focusedVideoKey]);
 
+  useEffect(() => {
+    const el = videoPanelInnerRef.current;
+    if (!el) {
+      setVideoPanelOverflowing(false);
+      return;
+    }
+
+    const updateOverflowState = () => {
+      const isOverflowing = el.scrollWidth > el.clientWidth + 1;
+      setVideoPanelOverflowing((prev) => (prev === isOverflowing ? prev : isOverflowing));
+      if (isOverflowing && el.scrollLeft !== 0) {
+        el.scrollLeft = 0;
+      }
+    };
+
+    updateOverflowState();
+
+    const resizeObserver = new ResizeObserver(updateOverflowState);
+    resizeObserver.observe(el);
+    Array.from(el.children).forEach((child) => resizeObserver.observe(child));
+
+    return () => resizeObserver.disconnect();
+  });
+
   const [showWindowControls, setShowWindowControls] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -523,7 +548,10 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             >
               &#x2039;
             </button>
-            <div ref={videoPanelInnerRef} className={styles.videoPanelInner}>
+            <div
+              ref={videoPanelInnerRef}
+              className={`${styles.videoPanelInner} ${videoPanelOverflowing ? styles.videoPanelInnerOverflowing : ""}`}
+            >
               {videoEntries.map((e) => (
                 <VideoSlot
                   key={e.key}

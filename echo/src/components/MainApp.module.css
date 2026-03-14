@@ -161,6 +161,10 @@
   -ms-overflow-style: none;
 }
 
+.videoPanelInnerOverflowing {
+  justify-content: flex-start;
+}
+
 .videoPanelInner::-webkit-scrollbar {
   display: none;
 }
