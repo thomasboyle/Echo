@@ -421,7 +421,15 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const startScreenshare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: {
+            min: 30,
+            ideal: 30,
+            max: 30,
+          },
+        },
+      });
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
       setIsScreensharing(true);

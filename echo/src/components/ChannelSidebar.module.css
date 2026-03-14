@@ -241,7 +241,30 @@
 }
 
 .voiceJoinPending {
-  color: var(--text-muted);
+  color: #ffbf47;
+  background-image: linear-gradient(
+    110deg,
+    #ffbf47 0%,
+    #ffbf47 38%,
+    rgba(255, 243, 214, 0.92) 50%,
+    #ffbf47 62%,
+    #ffbf47 100%
+  );
+  background-size: 220% 100%;
+  background-position: 140% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: voiceJoinGlint 1.8s ease-in-out infinite;
+}
+
+@keyframes voiceJoinGlint {
+  0% {
+    background-position: 140% 0;
+  }
+  100% {
+    background-position: -40% 0;
+  }
 }
 
 .voiceChannelUserContextMenu {

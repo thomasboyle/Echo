@@ -259,64 +259,67 @@ export default function ChannelSidebar({
                 ]
               : channelUsers;
             return (
-          <button
-            type="button"
-            className={`${styles.channelItem} ${
-              currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id ? styles.activeVoice : ""
-            }`}
-            onClick={async () => {
-              if (currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id) return;
-              setOptimisticVoiceChannelId(c.id);
-              try {
-                if (currentVoiceChannelId) {
-                  await webrtc?.leaveVoice?.();
-                  onRefreshVoiceActive?.();
-                }
-                await webrtc?.joinVoice?.(c.id);
-                onRefreshVoiceActive?.();
-              } catch (_) {}
-              finally {
-                setOptimisticVoiceChannelId((prev) => (prev === c.id ? null : prev));
-              }
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setChannelContextMenu({ x: e.clientX, y: e.clientY, channel: c });
-            }}
-          >
-            <span className={styles.voiceChannelName}>🔊 {c.name}</span>
-            {activeVoiceTimers[c.id] && (
-              <span className={styles.voiceTimer} aria-label={`Active for ${formatElapsed(activeVoiceTimers[c.id])}`}>
-                {formatElapsed(activeVoiceTimers[c.id])}
-              </span>
-            )}
-          </button>
-          {renderedVoiceUsers.length > 0 && (
-            <div className={styles.voiceChannelUsers}>
-              {renderedVoiceUsers.map((u) => (
-                <div
-                  key={u.id}
-                  className={styles.voiceChannelUser}
+              <>
+                <button
+                  type="button"
+                  className={`${styles.channelItem} ${
+                    currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id ? styles.activeVoice : ""
+                  }`}
+                  onClick={async () => {
+                    if (currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id) return;
+                    setOptimisticVoiceChannelId(c.id);
+                    try {
+                      if (currentVoiceChannelId) {
+                        await webrtc?.leaveVoice?.();
+                        onRefreshVoiceActive?.();
+                      }
+                      await webrtc?.joinVoice?.(c.id);
+                      onRefreshVoiceActive?.();
+                    } catch (_) {}
+                    finally {
+                      setOptimisticVoiceChannelId((prev) => (prev === c.id ? null : prev));
+                    }
+                  }}
                   onContextMenu={(e) => {
-                    if (user?.id === u.id) return;
                     e.preventDefault();
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      channelId: c.id,
-                      user: u,
-                    });
+                    setChannelContextMenu({ x: e.clientX, y: e.clientY, channel: c });
                   }}
                 >
-                  <span className={styles.voiceChannelUserAvatar}>{u.avatar_emoji || "🐱"}</span>
-                  <span className={styles.voiceChannelUserName}>
-                    {u.display_name || "User"}
-                    {u.__optimistic && <span className={styles.voiceJoinPending}> (joining...)</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+                  <span className={styles.voiceChannelName}>🔊 {c.name}</span>
+                  {activeVoiceTimers[c.id] && (
+                    <span className={styles.voiceTimer} aria-label={`Active for ${formatElapsed(activeVoiceTimers[c.id])}`}>
+                      {formatElapsed(activeVoiceTimers[c.id])}
+                    </span>
+                  )}
+                </button>
+                {renderedVoiceUsers.length > 0 && (
+                  <div className={styles.voiceChannelUsers}>
+                    {renderedVoiceUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className={styles.voiceChannelUser}
+                        onContextMenu={(e) => {
+                          if (user?.id === u.id) return;
+                          e.preventDefault();
+                          setContextMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            channelId: c.id,
+                            user: u,
+                          });
+                        }}
+                      >
+                        <span className={styles.voiceChannelUserAvatar}>{u.avatar_emoji || "🐱"}</span>
+                        <span
+                          className={`${styles.voiceChannelUserName} ${u.__optimistic ? styles.voiceJoinPending : ""}`}
+                        >
+                          {u.display_name || "User"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             );
           })()}
         </React.Fragment>
