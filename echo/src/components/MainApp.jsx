@@ -79,6 +79,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const syncRetryDoneRef = useRef(false);
   const focusedVideoContainerRef = useRef(null);
   const videoPanelInnerRef = useRef(null);
+  const videoPanelWheelLockRef = useRef(0);
   const peerVideoStreamCacheRef = useRef(Object.create(null));
   const [focusedVideoKey, setFocusedVideoKey] = useState(null);
   const [videoPanelOverflowing, setVideoPanelOverflowing] = useState(false);
@@ -320,7 +321,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     const updateOverflowState = () => {
       const isOverflowing = el.scrollWidth > el.clientWidth + 1;
       setVideoPanelOverflowing((prev) => (prev === isOverflowing ? prev : isOverflowing));
-      if (isOverflowing && el.scrollLeft !== 0) {
+      if (!isOverflowing && el.scrollLeft !== 0) {
         el.scrollLeft = 0;
       }
     };
@@ -333,6 +334,62 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
 
     return () => resizeObserver.disconnect();
   });
+
+  const scrollVideoPanelByFeed = useCallback((direction) => {
+    const el = videoPanelInnerRef.current;
+    if (!el) return;
+
+    const children = Array.from(el.children);
+    if (!children.length) return;
+
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    if (maxScrollLeft <= 0) {
+      el.scrollTo({ left: 0, behavior: "smooth" });
+      return;
+    }
+
+    const firstChildLeft = children[0].offsetLeft;
+    const viewportLeft = el.scrollLeft;
+    const viewportRight = viewportLeft + el.clientWidth;
+    const epsilon = 2;
+
+    const childMetrics = children.map((child, index) => {
+      const left = child.offsetLeft - firstChildLeft;
+      const right = left + child.offsetWidth;
+      const fullyVisible = left >= viewportLeft - epsilon && right <= viewportRight + epsilon;
+      return { index, left, right, fullyVisible };
+    });
+
+    let currentIndex = childMetrics.find((m) => m.fullyVisible)?.index;
+    if (currentIndex == null) {
+      currentIndex = childMetrics.reduce((closest, metric) => (
+        Math.abs(metric.left - viewportLeft) < Math.abs(childMetrics[closest].left - viewportLeft) ? metric.index : closest
+      ), 0);
+    }
+
+    const targetIndex = direction > 0
+      ? (currentIndex + 1) % childMetrics.length
+      : (currentIndex - 1 + childMetrics.length) % childMetrics.length;
+
+    const targetLeft = Math.max(0, Math.min(childMetrics[targetIndex].left, maxScrollLeft));
+    el.scrollTo({ left: targetLeft, behavior: "smooth" });
+  }, []);
+
+  const handleVideoPanelWheel = useCallback((event) => {
+    const now = Date.now();
+    if (now < videoPanelWheelLockRef.current) return;
+    if (Math.abs(event.deltaY) < 1) return;
+
+    const el = videoPanelInnerRef.current;
+    if (!el) return;
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    if (maxScrollLeft <= 0) return;
+
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? 1 : -1;
+    scrollVideoPanelByFeed(direction);
+    videoPanelWheelLockRef.current = now + 180;
+  }, [scrollVideoPanelByFeed]);
 
   const [showWindowControls, setShowWindowControls] = useState(false);
   useEffect(() => {
@@ -544,13 +601,14 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
               type="button"
               className={styles.videoPanelScrollBtn}
               aria-label="Scroll video feeds left"
-              onClick={() => videoPanelInnerRef.current?.scrollBy({ left: -328, behavior: "smooth" })}
+              onClick={() => scrollVideoPanelByFeed(-1)}
             >
               &#x2039;
             </button>
             <div
               ref={videoPanelInnerRef}
               className={`${styles.videoPanelInner} ${videoPanelOverflowing ? styles.videoPanelInnerOverflowing : ""}`}
+              onWheel={handleVideoPanelWheel}
             >
               {videoEntries.map((e) => (
                 <VideoSlot
@@ -566,7 +624,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
               type="button"
               className={styles.videoPanelScrollBtnRight}
               aria-label="Scroll video feeds right"
-              onClick={() => videoPanelInnerRef.current?.scrollBy({ left: 328, behavior: "smooth" })}
+              onClick={() => scrollVideoPanelByFeed(1)}
             >
               &#x203A;
             </button>

@@ -421,25 +421,31 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const startScreenshare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: {
-            min: 30,
-            ideal: 30,
-            max: 30,
-          },
-        },
-      });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const screenTrack = stream.getVideoTracks()[0];
+      if (screenTrack?.applyConstraints) {
+        try {
+          await screenTrack.applyConstraints({
+            frameRate: {
+              min: 30,
+              ideal: 30,
+              max: 30,
+            },
+          });
+        } catch (_) {
+          // Some platforms ignore or reject strict display track constraints.
+        }
+      }
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
       setIsScreensharing(true);
-      stream.getVideoTracks()[0].onended = () => stopScreenshare();
+      if (screenTrack) screenTrack.onended = () => stopScreenshare();
       setTimeout(() => invoke("hide_screen_sharing_indicator").catch(() => {}), 1);
       notifyActivity();
       const ws = signalingWsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
-          const track = stream.getVideoTracks()[0];
+          const track = screenTrack;
           if (track) {
             pc.addTrack(track, stream);
             const offer = await pc.createOffer();
