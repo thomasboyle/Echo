@@ -149,6 +149,7 @@
 .videoPanelInner {
   display: flex;
   flex-wrap: nowrap;
+  justify-content: center;
   gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -156,20 +157,12 @@
   padding: 0 8px;
   min-width: 0;
   flex: 1;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .videoPanelInner::-webkit-scrollbar {
-  height: 6px;
-}
-
-.videoPanelInner::-webkit-scrollbar-track {
-  background: var(--bg-dark);
-}
-
-.videoPanelInner::-webkit-scrollbar-thumb {
-  background: var(--bg-hover);
-  border-radius: 3px;
+  display: none;
 }
 
 .videoSlot {
