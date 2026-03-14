@@ -34,6 +34,7 @@ export default function Modals({
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   const data = modalData || {};
   const serverId = data.serverId;
@@ -42,7 +43,10 @@ export default function Modals({
     if (modal === "createChannel" && data.type) setCreateChannelType(data.type);
     if (modal === "renameChannel" && data.channel) setRenameChannelName(data.channel.name || "");
     if (modal === "renameServer" && data.serverName != null) setRenameServerName(data.serverName || "");
-    if (!modal) setError("");
+    if (!modal) {
+      setError("");
+      setInviteCopied(false);
+    }
   }, [modal, data]);
 
   const handleCreateServer = async () => {
@@ -170,8 +174,15 @@ export default function Modals({
     }
   };
 
-  const copyInvite = () => {
-    if (inviteCode) navigator.clipboard.writeText(inviteCode);
+  const copyInvite = async () => {
+    if (!inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(inviteCode);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1500);
+    } catch (_) {
+      setError("Failed to copy invite code");
+    }
   };
 
   const handleSearch = async () => {
@@ -304,8 +315,13 @@ export default function Modals({
             <h2 className={styles.title}>Invite</h2>
             <div className={styles.inviteRow}>
               <code className={styles.inviteCode}>{inviteCode || (loading ? "..." : "—")}</code>
-              <button type="button" className={styles.copyBtn} onClick={copyInvite} disabled={!inviteCode}>
-                Copy
+              <button
+                type="button"
+                className={`${styles.copyBtn} ${inviteCopied ? styles.copyBtnCopied : ""}`}
+                onClick={copyInvite}
+                disabled={!inviteCode}
+              >
+                {inviteCopied ? "Copied" : "Copy"}
               </button>
             </div>
             {error && <div className={styles.error}>{error}</div>}

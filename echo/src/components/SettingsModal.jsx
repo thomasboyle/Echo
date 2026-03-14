@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import styles from "./SettingsModal.module.css";
+import packageJson from "../../package.json";
 
 const STORAGE_KEYS = {
   audioInput: "nexus_audio_input_id",
@@ -315,6 +316,13 @@ export default function SettingsModal({ user, api, baseUrl, onClose, onProfileSa
             >
               Account
             </button>
+            <button
+              type="button"
+              className={`${styles.navItem} ${category === "About" ? styles.navItemActive : ""}`}
+              onClick={() => setCategory("About")}
+            >
+              About
+            </button>
           </nav>
         </div>
         <div className={styles.main}>
@@ -443,6 +451,16 @@ export default function SettingsModal({ user, api, baseUrl, onClose, onProfileSa
                     Stop preview
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {category === "About" && (
+            <div className={styles.panel}>
+              <h3 className={styles.panelTitle}>About</h3>
+              <div className={styles.detailRow}>
+                <span className={styles.detailLabel}>App version:</span>
+                <span className={styles.detailValue}>{packageJson.version}</span>
               </div>
             </div>
           )}

@@ -119,6 +119,24 @@
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.copyBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.copyBtn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.copyBtnCopied {
+  background: #2e8b57;
+}
+
+.copyBtnCopied:hover:not(:disabled) {
+  background: #2e8b57;
 }
 
 .radioGroup {

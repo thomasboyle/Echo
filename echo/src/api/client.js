@@ -1,4 +1,6 @@
-let BASE_URL = "";
+export const FIXED_SERVER_URL = "http://217.155.18.62:8000";
+
+let BASE_URL = FIXED_SERVER_URL;
 let TOKEN = "";
 
 function normalizeBaseUrl(url) {
@@ -8,7 +10,7 @@ function normalizeBaseUrl(url) {
 }
 
 export const setServerConfig = (url, token) => {
-  BASE_URL = normalizeBaseUrl(url || "") || "";
+  BASE_URL = FIXED_SERVER_URL;
   TOKEN = token || "";
 };
 
