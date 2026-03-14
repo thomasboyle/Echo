@@ -16,6 +16,7 @@ export default function ChannelSidebar({
   onOpenModal,
   onModalData,
   onChannelsChange,
+  onChannelUpdated,
   onDmSelect,
   webrtc,
   currentVoiceChannelId,
@@ -31,6 +32,7 @@ export default function ChannelSidebar({
   const [contextMenu, setContextMenu] = useState(null);
   const [channelContextMenu, setChannelContextMenu] = useState(null);
   const [channelBandwidth, setChannelBandwidth] = useState(null);
+  const [channelUserLimit, setChannelUserLimit] = useState(null);
   const [optimisticVoiceChannelId, setOptimisticVoiceChannelId] = useState(null);
 
   useEffect(() => {
@@ -61,10 +63,13 @@ export default function ChannelSidebar({
   useEffect(() => {
     if (!channelContextMenu?.channel) {
       setChannelBandwidth(null);
+      setChannelUserLimit(null);
       return;
     }
     const v = channelContextMenu.channel.voice_bandwidth_kbps;
     setChannelBandwidth(typeof v === "number" ? v : 320);
+    const limit = channelContextMenu.channel.voice_user_limit;
+    setChannelUserLimit(typeof limit === "number" && limit >= 1 && limit <= 100 ? limit : 0);
   }, [channelContextMenu]);
 
   useEffect(() => {
@@ -92,6 +97,27 @@ export default function ChannelSidebar({
     if (!channelContextMenu?.channel) return;
     const value = channelBandwidth ?? 320;
     handleVoiceBandwidthChange(channelContextMenu.channel, value);
+  };
+
+  const handleVoiceUserLimitChange = async (channel, value) => {
+    if (!api || !selectedServerId || !channel?.id) return;
+    const limit = value === 0 || value === "0" ? 0 : Math.max(1, Math.min(100, Number(value)));
+    setChannelUserLimit(limit);
+    try {
+      if (typeof api.updateChannelSettings === "function") {
+        const updated = await api.updateChannelSettings(selectedServerId, channel.id, {
+          voice_user_limit: limit === 0 ? 0 : limit,
+        });
+        onChannelUpdated?.(updated);
+      }
+      onChannelsChange?.();
+    } catch (_) {}
+  };
+
+  const commitVoiceUserLimitChange = () => {
+    if (!channelContextMenu?.channel) return;
+    const value = channelUserLimit ?? 0;
+    handleVoiceUserLimitChange(channelContextMenu.channel, value);
   };
 
   const textChannels = (channels || []).filter((c) => c.type === "text");
@@ -318,6 +344,9 @@ export default function ChannelSidebar({
                       {formatElapsed(activeVoiceTimers[c.id])}
                     </span>
                   )}
+                  {c.voice_user_limit != null && c.voice_user_limit >= 1 && channelUsers.length >= c.voice_user_limit && (
+                    <span className={styles.voiceChannelFull}>Full</span>
+                  )}
                 </button>
                 {renderedVoiceUsers.length > 0 && (
                   <div className={styles.voiceChannelUsers}>
@@ -405,23 +434,42 @@ export default function ChannelSidebar({
             Rename
           </button>
           {channelContextMenu.channel?.type === "voice" && (
-            <div className={styles.voiceChannelContextSection}>
-              <div className={styles.voiceChannelBandwidthLabel}>
-                <span>Bandwidth</span>
-                <span>{(channelBandwidth ?? 320).toFixed(0)} kbps</span>
+            <>
+              <div className={styles.voiceChannelContextSection}>
+                <div className={styles.voiceChannelBandwidthLabel}>
+                  <span>Bandwidth</span>
+                  <span>{(channelBandwidth ?? 320).toFixed(0)} kbps</span>
+                </div>
+                <input
+                  type="range"
+                  min={8}
+                  max={1000}
+                  step={8}
+                  value={channelBandwidth ?? 320}
+                  className={styles.voiceChannelBandwidthSlider}
+                  onChange={(e) => setChannelBandwidth(Number(e.target.value))}
+                  onMouseUp={commitVoiceBandwidthChange}
+                  onTouchEnd={commitVoiceBandwidthChange}
+                />
               </div>
-              <input
-                type="range"
-                min={8}
-                max={1000}
-                step={8}
-                value={channelBandwidth ?? 320}
-                className={styles.voiceChannelBandwidthSlider}
-                onChange={(e) => setChannelBandwidth(Number(e.target.value))}
-                onMouseUp={commitVoiceBandwidthChange}
-                onTouchEnd={commitVoiceBandwidthChange}
-              />
-            </div>
+              <div className={styles.voiceChannelContextSection}>
+                <div className={styles.voiceChannelBandwidthLabel}>
+                  <span>User limit</span>
+                  <span>{channelUserLimit === 0 ? "No limit" : (channelUserLimit ?? 0)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={channelUserLimit ?? 0}
+                  className={styles.voiceChannelBandwidthSlider}
+                  onChange={(e) => setChannelUserLimit(Number(e.target.value))}
+                  onMouseUp={commitVoiceUserLimitChange}
+                  onTouchEnd={commitVoiceUserLimitChange}
+                />
+              </div>
+            </>
           )}
         </div>
       )}

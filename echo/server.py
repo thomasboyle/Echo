@@ -206,6 +206,8 @@ def init_db():
     channel_columns = [row[1] for row in cur.fetchall()]
     if "voice_bandwidth_kbps" not in channel_columns:
         cur.execute("ALTER TABLE channels ADD COLUMN voice_bandwidth_kbps INTEGER")
+    if "voice_user_limit" not in channel_columns:
+        cur.execute("ALTER TABLE channels ADD COLUMN voice_user_limit INTEGER")
     cur.execute("PRAGMA table_info(voice_sessions)")
     voice_columns = [row[1] for row in cur.fetchall()]
     if "is_muted" not in voice_columns:
@@ -299,6 +301,7 @@ class CreateChannelBody(BaseModel):
 class UpdateChannelBody(BaseModel):
     name: str | None = None
     voice_bandwidth_kbps: int | None = None
+    voice_user_limit: int | None = None
 
 
 class VoiceDisconnectBody(BaseModel):
@@ -707,7 +710,7 @@ async def list_channels(server_id: str, authorization: str | None = Header(defau
             if await cur.fetchone() is None:
                 raise HTTPException(status_code=403, detail="Not a member")
         async with db.execute(
-            "SELECT id, server_id, name, type, created_at, COALESCE(voice_bandwidth_kbps, 0) FROM channels WHERE server_id = ? ORDER BY type, name",
+            "SELECT id, server_id, name, type, created_at, COALESCE(voice_bandwidth_kbps, 0), voice_user_limit FROM channels WHERE server_id = ? ORDER BY type, name",
             (server_id,),
         ) as cur:
             rows = await cur.fetchall()
@@ -720,6 +723,7 @@ async def list_channels(server_id: str, authorization: str | None = Header(defau
             "type": r[3],
             "created_at": r[4],
             "voice_bandwidth_kbps": r[5] or None,
+            "voice_user_limit": r[6] if len(r) > 6 and r[6] is not None else None,
         })
     return out
 
@@ -773,9 +777,10 @@ async def create_channel(server_id: str, body: CreateChannelBody, authorization:
         ch_id = str(uuid.uuid4())
         created = now_iso()
         voice_bw = 320 if body.type == "voice" else None
+        voice_limit = None if body.type != "voice" else None
         await db.execute(
-            "INSERT INTO channels (id, server_id, name, type, created_at, voice_bandwidth_kbps) VALUES (?,?,?,?,?,?)",
-            (ch_id, server_id, body.name, body.type, created, voice_bw),
+            "INSERT INTO channels (id, server_id, name, type, created_at, voice_bandwidth_kbps, voice_user_limit) VALUES (?,?,?,?,?,?,?)",
+            (ch_id, server_id, body.name, body.type, created, voice_bw, voice_limit),
         )
         await db.commit()
     return {
@@ -784,6 +789,7 @@ async def create_channel(server_id: str, body: CreateChannelBody, authorization:
         "name": body.name,
         "type": body.type,
         "voice_bandwidth_kbps": voice_bw,
+        "voice_user_limit": None,
     }
 
 
@@ -813,6 +819,10 @@ async def update_channel(
             bw = max(8, min(1000, int(body.voice_bandwidth_kbps)))
             updates.append("voice_bandwidth_kbps = ?")
             params.append(bw)
+        if body.voice_user_limit is not None:
+            limit_val = None if body.voice_user_limit == 0 else max(1, min(100, int(body.voice_user_limit)))
+            updates.append("voice_user_limit = ?")
+            params.append(limit_val)
         if updates:
             params.extend([channel_id, server_id])
             await db.execute(
@@ -821,7 +831,7 @@ async def update_channel(
             )
             await db.commit()
         async with db.execute(
-            "SELECT id, server_id, name, type, COALESCE(voice_bandwidth_kbps, 0) FROM channels WHERE id = ?",
+            "SELECT id, server_id, name, type, COALESCE(voice_bandwidth_kbps, 0), voice_user_limit FROM channels WHERE id = ?",
             (channel_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -831,6 +841,7 @@ async def update_channel(
         "name": row[2],
         "type": row[3],
         "voice_bandwidth_kbps": row[4] or None,
+        "voice_user_limit": row[5] if len(row) > 5 and row[5] is not None else None,
     }
 
 
@@ -1017,6 +1028,19 @@ async def voice_join(channel_id: str, authorization: str | None = Header(default
             ) as cur:
                 if await cur.fetchone() is None:
                     raise HTTPException(status_code=403, detail="Not a member")
+        async with db.execute(
+            "SELECT voice_user_limit FROM channels WHERE id = ?", (channel_id,)
+        ) as cur:
+            limit_row = await cur.fetchone()
+        limit = limit_row[0] if limit_row and limit_row[0] is not None else None
+        if limit is not None:
+            async with db.execute(
+                "SELECT COUNT(*) FROM voice_sessions WHERE channel_id = ?", (channel_id,)
+            ) as cur:
+                count_row = await cur.fetchone()
+            count = count_row[0] if count_row else 0
+            if count >= limit:
+                raise HTTPException(status_code=403, detail="Channel is full")
     created = now_iso()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(

@@ -497,6 +497,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           onOpenModal={setModal}
           onModalData={(data) => setModalData({ ...data, serverId: selectedServerId, serverName: servers.find((s) => s.id === selectedServerId)?.name, user })}
           onChannelsChange={() => selectedServerId && loadChannels(selectedServerId)}
+          onChannelUpdated={(ch) => ch?.id && setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, ...ch } : c)))}
           onDmSelect={(dmId) => {
             setView("dms");
             setSelectedChannelId(dmId);
