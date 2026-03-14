@@ -170,8 +170,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       if (prevId && prevId !== channelId) {
         await leaveVoice();
       }
-      setCurrentChannelId(channelId);
-      const wsConnectedRef = { current: false };
       try {
         const audioInputId = getStoredAudioInputId();
         const audioConstraint = audioInputId ? { deviceId: audioInputId } : true;
@@ -193,6 +191,9 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         const wsUrl = `${url}/voice-signal/${channelId}?token=${encodeURIComponent(token)}`;
         const ws = new WebSocket(wsUrl);
         signalingWsRef.current = ws;
+        setCurrentChannelId(channelId);
+        setIsInVoice(true);
+        notifyActivity();
 
         const existingPeers = await api.getVoicePeers(channelId).catch(() => []);
         setServerVoicePeers(existingPeers || []);
@@ -380,9 +381,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         };
 
         ws.onopen = async () => {
-          wsConnectedRef.current = true;
-          setIsInVoice(true);
-          notifyActivity();
           let myId = null;
           try {
             const me = await api.getMe();
@@ -394,34 +392,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             setServerVoicePeers(fresh || []);
             await sendOffersToPeers(fresh, myId, signalingWsRef);
           }, 1500);
-        };
-
-        ws.onerror = () => {
-          if (!wsConnectedRef.current) {
-            setCurrentChannelId(null);
-            setVoiceError("Voice connection failed");
-            if (localStreamRef.current) {
-              localStreamRef.current.getTracks().forEach((t) => t.stop());
-              localStreamRef.current = null;
-            }
-            setLocalStream(null);
-            setHasVideoSource(false);
-          }
-        };
-
-        ws.onclose = () => {
-          if (!wsConnectedRef.current) {
-            setCurrentChannelId(null);
-            setVoiceError("Voice connection closed");
-            if (localStreamRef.current) {
-              localStreamRef.current.getTracks().forEach((t) => t.stop());
-              localStreamRef.current = null;
-            }
-            setLocalStream(null);
-            setHasVideoSource(false);
-          } else {
-            leaveVoice();
-          }
         };
       } catch (err) {
         const msg = err?.message || "Could not join voice channel";
@@ -451,9 +421,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const startScreenshare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 } },
-      });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
       setIsScreensharing(true);

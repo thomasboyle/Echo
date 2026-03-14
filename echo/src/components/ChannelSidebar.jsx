@@ -30,6 +30,7 @@ export default function ChannelSidebar({
   const [contextMenu, setContextMenu] = useState(null);
   const [channelContextMenu, setChannelContextMenu] = useState(null);
   const [channelBandwidth, setChannelBandwidth] = useState(null);
+  const [optimisticVoiceChannelId, setOptimisticVoiceChannelId] = useState(null);
 
   useEffect(() => {
     if (!serverMenuOpen) return;
@@ -64,6 +65,12 @@ export default function ChannelSidebar({
     const v = channelContextMenu.channel.voice_bandwidth_kbps;
     setChannelBandwidth(typeof v === "number" ? v : 320);
   }, [channelContextMenu]);
+
+  useEffect(() => {
+    if (currentVoiceChannelId && optimisticVoiceChannelId === currentVoiceChannelId) {
+      setOptimisticVoiceChannelId(null);
+    }
+  }, [currentVoiceChannelId, optimisticVoiceChannelId]);
 
   const handleVoiceBandwidthChange = async (channel, value) => {
     if (!api || !selectedServerId || !channel?.id) return;
@@ -234,11 +241,32 @@ export default function ChannelSidebar({
       </div>
       {voiceChannels.map((c) => (
         <React.Fragment key={c.id}>
+          {(() => {
+            const channelUsers = activeVoiceUsers[c.id] || [];
+            const hasCurrentUser = !!user?.id && channelUsers.some((u) => u.id === user.id);
+            const isOptimisticJoin = optimisticVoiceChannelId === c.id;
+            const shouldRenderCurrentUser =
+              !!user?.id && (isOptimisticJoin || (currentVoiceChannelId === c.id && !hasCurrentUser));
+            const renderedVoiceUsers = shouldRenderCurrentUser
+              ? [
+                  {
+                    id: user.id,
+                    display_name: user.display_name || "You",
+                    avatar_emoji: user.avatar_emoji || "🐱",
+                    __optimistic: isOptimisticJoin,
+                  },
+                  ...channelUsers,
+                ]
+              : channelUsers;
+            return (
           <button
             type="button"
-            className={`${styles.channelItem} ${currentVoiceChannelId === c.id ? styles.activeVoice : ""}`}
+            className={`${styles.channelItem} ${
+              currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id ? styles.activeVoice : ""
+            }`}
             onClick={async () => {
-              if (currentVoiceChannelId === c.id) return;
+              if (currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id) return;
+              setOptimisticVoiceChannelId(c.id);
               try {
                 if (currentVoiceChannelId) {
                   await webrtc?.leaveVoice?.();
@@ -247,6 +275,9 @@ export default function ChannelSidebar({
                 await webrtc?.joinVoice?.(c.id);
                 onRefreshVoiceActive?.();
               } catch (_) {}
+              finally {
+                setOptimisticVoiceChannelId((prev) => (prev === c.id ? null : prev));
+              }
             }}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -260,9 +291,9 @@ export default function ChannelSidebar({
               </span>
             )}
           </button>
-          {activeVoiceUsers[c.id]?.length > 0 && (
+          {renderedVoiceUsers.length > 0 && (
             <div className={styles.voiceChannelUsers}>
-              {activeVoiceUsers[c.id].map((u) => (
+              {renderedVoiceUsers.map((u) => (
                 <div
                   key={u.id}
                   className={styles.voiceChannelUser}
@@ -278,11 +309,16 @@ export default function ChannelSidebar({
                   }}
                 >
                   <span className={styles.voiceChannelUserAvatar}>{u.avatar_emoji || "🐱"}</span>
-                  <span className={styles.voiceChannelUserName}>{u.display_name || "User"}</span>
+                  <span className={styles.voiceChannelUserName}>
+                    {u.display_name || "User"}
+                    {u.__optimistic && <span className={styles.voiceJoinPending}> (joining...)</span>}
+                  </span>
                 </div>
               ))}
             </div>
           )}
+            );
+          })()}
         </React.Fragment>
       ))}
       {channelContextMenu && (

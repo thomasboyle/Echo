@@ -240,6 +240,10 @@
   white-space: nowrap;
 }
 
+.voiceJoinPending {
+  color: var(--text-muted);
+}
+
 .voiceChannelUserContextMenu {
   position: fixed;
   z-index: 1000;
