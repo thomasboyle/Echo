@@ -482,11 +482,16 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const startScreenshare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { max: 1920 }, height: { max: 1080 } },
+        audio: true,
+      });
       const screenTrack = stream.getVideoTracks()[0];
       if (screenTrack?.applyConstraints) {
         try {
           await screenTrack.applyConstraints({
+            width: { max: 1920 },
+            height: { max: 1080 },
             frameRate: {
               min: 30,
               ideal: 30,
