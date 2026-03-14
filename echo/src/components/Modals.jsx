@@ -15,6 +15,7 @@ export default function Modals({
   onServerDeleted,
   onServerRenamed,
   onChannelCreated,
+  onChannelDeleted,
   onJoinServer,
   onProfileSaved,
   onDmCreated,
@@ -229,6 +230,24 @@ export default function Modals({
     }
   };
 
+  const handleConfirmDeleteChannel = async () => {
+    if (!api) return;
+    const channel = data.channel;
+    const serverId = data.serverId;
+    if (!serverId || !channel?.id) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.deleteChannel(serverId, channel.id);
+      onChannelDeleted?.(serverId, channel.id);
+      onClose();
+    } catch (e) {
+      setError(e.message || "Failed to delete");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!modal) return null;
 
   if (modal === "userSettings") {
@@ -414,6 +433,24 @@ export default function Modals({
           </>
         )}
 
+        {modal === "confirmDeleteChannel" && (
+          <>
+            <h2 className={styles.title}>Delete channel</h2>
+            <p className={styles.confirmMessage}>
+              Are you sure you want to delete <strong>{data.channel?.name || "this channel"}</strong>? All messages will be removed. This cannot be undone.
+            </p>
+            {error && <div className={styles.error}>{error}</div>}
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryBtn} onClick={onClose} disabled={loading}>
+                Cancel
+              </button>
+              <button type="button" className={styles.dangerBtn} onClick={handleConfirmDeleteChannel} disabled={loading}>
+                {loading ? "..." : "Delete"}
+              </button>
+            </div>
+          </>
+        )}
+
         {modal === "userSearch" && (
           <>
             <h2 className={styles.title}>Find User</h2>
@@ -445,7 +482,7 @@ export default function Modals({
           </>
         )}
 
-        {modal !== "confirmDeleteServer" && (
+        {modal !== "confirmDeleteServer" && modal !== "confirmDeleteChannel" && (
           <button type="button" className={styles.closeBtn} onClick={onClose}>
             Close
           </button>

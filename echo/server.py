@@ -866,6 +866,30 @@ async def update_channel(
     }
 
 
+@app.delete("/servers/{server_id}/channels/{channel_id}")
+async def delete_channel(
+    server_id: str, channel_id: str,
+    authorization: str | None = Header(default=None),
+):
+    user_id = await get_current_user(authorization)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?", (server_id, user_id)
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=403, detail="Not a member")
+        async with db.execute(
+            "SELECT id FROM channels WHERE id = ? AND server_id = ?", (channel_id, server_id)
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Channel not found")
+        await db.execute("DELETE FROM voice_sessions WHERE channel_id = ?", (channel_id,))
+        await db.execute("DELETE FROM messages WHERE channel_id = ?", (channel_id,))
+        await db.execute("DELETE FROM channels WHERE id = ? AND server_id = ?", (channel_id, server_id))
+        await db.commit()
+    return {"ok": True}
+
+
 # ----- Messages -----
 
 @app.get("/channels/{channel_id}/messages")

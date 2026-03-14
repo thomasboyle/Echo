@@ -113,6 +113,11 @@ function createApi(baseUrl, token) {
         headers: authHeaders(),
         body: JSON.stringify(payload || {}),
       }).then(parseJson),
+    deleteChannel: (serverId, channelId) =>
+      fetch(`${base}/servers/${serverId}/channels/${channelId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      }).then(parseJson),
     getMessages: (channelId, limit = 50, before = null) => {
       const params = new URLSearchParams({ limit: String(limit) });
       if (before) params.set("before", before);

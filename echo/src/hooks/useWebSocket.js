@@ -58,12 +58,20 @@ export function useWebSocket(baseUrl, token) {
           reconnectTimerRef.current = null;
         }
         const prev = wsRef.current;
-        prev.onclose = () => {
+        wsRef.current = null;
+        const onPrevClose = () => {
           setConnected(false);
-          if (wsRef.current === prev) wsRef.current = null;
           doConnect();
         };
-        prev.close();
+        if (prev.readyState === WebSocket.CONNECTING) {
+          prev.onopen = () => prev.close();
+          prev.onerror = () => {};
+          prev.onclose = () => setConnected(false);
+          doConnect();
+        } else {
+          prev.onclose = onPrevClose;
+          prev.close();
+        }
       } else {
         doConnect();
       }
@@ -78,8 +86,15 @@ export function useWebSocket(baseUrl, token) {
     }
     channelIdRef.current = null;
     if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+      const ws = wsRef.current;
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.onopen = () => ws.close();
+        ws.onerror = () => {};
+        wsRef.current = null;
+      } else {
+        ws.close();
+        wsRef.current = null;
+      }
     }
     setConnected(false);
   }, []);
@@ -146,7 +161,13 @@ export function useNotificationsWebSocket(baseUrl, token, onMessageRef) {
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (wsRef.current) {
-        wsRef.current.close();
+        const ws = wsRef.current;
+        if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => ws.close();
+          ws.onerror = () => {};
+        } else {
+          ws.close();
+        }
         wsRef.current = null;
       }
     };

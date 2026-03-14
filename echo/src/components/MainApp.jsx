@@ -470,6 +470,17 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     } catch (_) {}
   };
 
+  const handleMentionClear = useCallback(() => {
+    const cid = selectedChannelIdRef.current;
+    const sid = selectedServerIdRef.current;
+    if (!cid) return;
+    const count = mentionByChannelRef.current[cid] || 0;
+    setMentionByChannel((c) => ({ ...c, [cid]: 0 }));
+    if (sid && count > 0) {
+      setMentionByServer((s) => ({ ...s, [sid]: Math.max(0, (s[sid] || 0) - count) }));
+    }
+  }, []);
+
   return (
     <div className={styles.layout}>
       <header className={styles.titlebar} data-tauri-drag-region>
@@ -647,16 +658,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             setView("dms");
           }}
           onUnreadClear={() => selectedChannelId && setUnread((u) => ({ ...u, [selectedChannelId]: 0 }))}
-          onMentionClear={useCallback(() => {
-            const cid = selectedChannelIdRef.current;
-            const sid = selectedServerIdRef.current;
-            if (!cid) return;
-            const count = mentionByChannelRef.current[cid] || 0;
-            setMentionByChannel((c) => ({ ...c, [cid]: 0 }));
-            if (sid && count > 0) {
-              setMentionByServer((s) => ({ ...s, [sid]: Math.max(0, (s[sid] || 0) - count) }));
-            }
-          }, [])}
+          onMentionClear={handleMentionClear}
           onMessageReceived={(data) => {
             if (data.channel_id !== selectedChannelId) {
               setUnread((u) => ({ ...u, [data.channel_id]: (u[data.channel_id] || 0) + 1 }));
@@ -772,6 +774,10 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
         }}
         onServerRenamed={loadServers}
         onChannelCreated={(serverId) => serverId && loadChannels(serverId)}
+        onChannelDeleted={(serverId, channelId) => {
+          if (serverId) loadChannels(serverId);
+          if (selectedChannelId === channelId) setSelectedChannelId(null);
+        }}
         onJoinServer={loadServers}
         onProfileSaved={onProfileSaved}
         onDmCreated={loadDMs}

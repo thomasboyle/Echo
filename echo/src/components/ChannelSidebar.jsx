@@ -1,5 +1,22 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import styles from "./ChannelSidebar.module.css";
+
+function LivePreviewVideo({ stream }) {
+  const videoRef = useRef(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !stream) return;
+    el.srcObject = stream;
+    return () => {
+      el.srcObject = null;
+    };
+  }, [stream]);
+  if (!stream || stream.getVideoTracks().length === 0) return null;
+  return (
+    <video ref={videoRef} autoPlay playsInline muted className={styles.livePreviewVideo} />
+  );
+}
 
 function formatBadgeCount(n) {
   if (n <= 0) return null;
@@ -40,6 +57,9 @@ export default function ChannelSidebar({
   const [channelBandwidth, setChannelBandwidth] = useState(null);
   const [channelUserLimit, setChannelUserLimit] = useState(null);
   const [optimisticVoiceChannelId, setOptimisticVoiceChannelId] = useState(null);
+  const [livePreviewUserId, setLivePreviewUserId] = useState(null);
+  const [livePreviewAnchorRect, setLivePreviewAnchorRect] = useState(null);
+  const livePreviewLeaveDelayRef = useRef(null);
 
   useEffect(() => {
     if (!serverMenuOpen) return;
@@ -169,6 +189,30 @@ export default function ChannelSidebar({
       muted: isCurrentUser ? !!currentWebRtcState?.isMuted : mutedFromData,
       deafened: isCurrentUser ? !!currentWebRtcState?.isDeafened : deafenedFromData,
     };
+  };
+
+  const livePreviewStream = (() => {
+    if (!livePreviewUserId || !webrtc) return null;
+    if (livePreviewUserId === user?.id) return webrtc.localScreenStream || null;
+    const peer = (webrtc.peers || []).find((p) => p.userId === livePreviewUserId);
+    const stream = peer?.stream;
+    if (!stream || stream.getVideoTracks().length === 0) return null;
+    const videoTracks = stream.getVideoTracks().filter((t) => t.readyState === "live");
+    return videoTracks.length > 0 ? new MediaStream(videoTracks) : null;
+  })();
+
+  const clearLivePreview = () => {
+    if (livePreviewLeaveDelayRef.current) {
+      clearTimeout(livePreviewLeaveDelayRef.current);
+      livePreviewLeaveDelayRef.current = null;
+    }
+    setLivePreviewUserId(null);
+    setLivePreviewAnchorRect(null);
+  };
+
+  const scheduleClearLivePreview = () => {
+    if (livePreviewLeaveDelayRef.current) clearTimeout(livePreviewLeaveDelayRef.current);
+    livePreviewLeaveDelayRef.current = setTimeout(clearLivePreview, 200);
   };
 
   const handleInvite = () => {
@@ -394,8 +438,21 @@ export default function ChannelSidebar({
                             return (
                               <>
                                 {isScreensharing && (
-                                  <span className={styles.voiceLiveBadge} title="Screensharing">
-                                    LIVE
+                                  <span
+                                    className={styles.voiceLiveBadgeWrap}
+                                    onMouseEnter={(e) => {
+                                      if (livePreviewLeaveDelayRef.current) {
+                                        clearTimeout(livePreviewLeaveDelayRef.current);
+                                        livePreviewLeaveDelayRef.current = null;
+                                      }
+                                      setLivePreviewUserId(u.id);
+                                      setLivePreviewAnchorRect(e.currentTarget.getBoundingClientRect());
+                                    }}
+                                    onMouseLeave={scheduleClearLivePreview}
+                                  >
+                                    <span className={styles.voiceLiveBadge} title="Screensharing">
+                                      LIVE
+                                    </span>
                                   </span>
                                 )}
                                 {voiceState.muted && (
@@ -447,6 +504,18 @@ export default function ChannelSidebar({
             }}
           >
             Rename
+          </button>
+          <button
+            type="button"
+            className={`${styles.voiceChannelUserContextMenuItem} ${styles.danger}`}
+            role="menuitem"
+            onClick={() => {
+              onOpenModal("confirmDeleteChannel");
+              onModalData?.({ channel: channelContextMenu.channel, serverId: selectedServerId });
+              setChannelContextMenu(null);
+            }}
+          >
+            Delete channel
           </button>
           {channelContextMenu.channel?.type === "voice" && (
             <>
@@ -547,6 +616,27 @@ export default function ChannelSidebar({
           ⚙
         </button>
       </div>
+      {livePreviewUserId != null &&
+        livePreviewAnchorRect != null &&
+        createPortal(
+          <div
+            className={styles.livePreviewPopover}
+            style={{
+              left: livePreviewAnchorRect.left,
+              bottom: typeof window !== "undefined" ? window.innerHeight - livePreviewAnchorRect.top + 6 : 0,
+            }}
+            onMouseEnter={() => {
+              if (livePreviewLeaveDelayRef.current) {
+                clearTimeout(livePreviewLeaveDelayRef.current);
+                livePreviewLeaveDelayRef.current = null;
+              }
+            }}
+            onMouseLeave={scheduleClearLivePreview}
+          >
+            <LivePreviewVideo stream={livePreviewStream} />
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

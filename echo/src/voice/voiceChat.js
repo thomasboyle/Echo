@@ -482,7 +482,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const startScreenshare = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       const screenTrack = stream.getVideoTracks()[0];
       if (screenTrack?.applyConstraints) {
         try {
@@ -505,16 +505,16 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       notifyActivity();
       const ws = signalingWsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
-        for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
-          const track = screenTrack;
-          if (track) {
-            pc.addTrack(track, stream);
+        const tracks = stream.getTracks();
+        if (tracks.length > 0) {
+          for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
+            tracks.forEach((track) => pc.addTrack(track, stream));
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({ type: "offer", to_user_id: peerId, offer }));
           }
+          ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true }));
         }
-        ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true }));
       }
     } catch (err) {
       setIsScreensharing(false);
@@ -531,10 +531,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     const stream = screenStreamRef.current;
     if (!stream) return;
     const ws = signalingWsRef.current;
+    const streamTracks = stream.getTracks();
     for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
-      const sender = pc.getSenders().find((s) => s.track && stream.getTracks().includes(s.track));
-      if (sender) {
-        pc.removeTrack(sender);
+      const sendersToRemove = pc.getSenders().filter((s) => s.track && streamTracks.includes(s.track));
+      sendersToRemove.forEach((sender) => pc.removeTrack(sender));
+      if (sendersToRemove.length > 0) {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         if (ws?.readyState === WebSocket.OPEN) {
