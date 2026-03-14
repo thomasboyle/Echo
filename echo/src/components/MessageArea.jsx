@@ -56,7 +56,122 @@ function isImageFile(file) {
   return ALLOWED_IMAGE_TYPES.includes(t) || t.startsWith("image/");
 }
 
-function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick }) {
+const DRAG_THRESHOLD_PX = 5;
+
+function ImageLightbox({
+  src,
+  zoomed,
+  zoomOrigin,
+  pan,
+  onZoomIn,
+  onZoomOut,
+  onPan,
+  onClose,
+  dragRef,
+  styles,
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  useEffect(() => {
+    if (!zoomed) return;
+    const onMouseMove = (e) => {
+      const r = dragRef.current;
+      if (!r.isDragging) return;
+      const dx = e.clientX - r.lastX;
+      const dy = e.clientY - r.lastY;
+      r.lastX = e.clientX;
+      r.lastY = e.clientY;
+      if (!r.hasMoved && (Math.abs(e.clientX - r.startX) > DRAG_THRESHOLD_PX || Math.abs(e.clientY - r.startY) > DRAG_THRESHOLD_PX)) {
+        r.hasMoved = true;
+      }
+      onPan({ x: dx, y: dy });
+    };
+    const onMouseUp = () => {
+      const r = dragRef.current;
+      if (!r.isDragging) return;
+      r.lastClickWasDrag = r.hasMoved;
+      r.isDragging = false;
+      setIsDragging(false);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [zoomed, onPan, dragRef]);
+
+  const handleImageMouseDown = (e) => {
+    if (!zoomed) return;
+    e.preventDefault();
+    setIsDragging(true);
+    dragRef.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      hasMoved: false,
+      lastClickWasDrag: false,
+    };
+  };
+
+  const handleImageClick = (e) => {
+    e.stopPropagation();
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    if (zoomed) {
+      if (dragRef.current.lastClickWasDrag) return;
+      onZoomOut();
+    } else {
+      onZoomIn({ x, y });
+    }
+  };
+
+  return (
+    <div
+      className={styles.imageLightboxOverlay}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Enlarged image"
+    >
+      <button
+        type="button"
+        className={styles.imageLightboxClose}
+        onClick={onClose}
+        aria-label="Close"
+      >
+        ×
+      </button>
+      <div
+        className={styles.imageLightboxContent}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={src}
+          alt="Enlarged"
+          className={styles.imageLightboxImage}
+          style={
+            zoomed
+              ? {
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(2)`,
+                  transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+                  cursor: isDragging ? "grabbing" : "grab",
+                  userSelect: "none",
+                }
+              : undefined
+          }
+          onMouseDown={handleImageMouseDown}
+          onClick={handleImageClick}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick, onImageClick }) {
   const first = messages[0];
   const author = first?.author || {};
   const handleMentionClick = (mentionText) => {
@@ -94,21 +209,28 @@ function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick }) {
             )}
             {m.attachments?.length > 0 && (
               <div className={styles.attachmentList}>
-                {m.attachments.map((att, i) => (
-                  <a
-                    key={i}
-                    href={att.url?.startsWith("http") ? att.url : `${baseUrl || ""}${att.url}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.attachmentLink}
-                  >
-                    <img
-                      src={att.url?.startsWith("http") ? att.url : `${baseUrl || ""}${att.url}`}
-                      alt={att.filename || "Image"}
-                      className={styles.attachmentImage}
-                    />
-                  </a>
-                ))}
+                {m.attachments.map((att, i) => {
+                  const imgUrl = att.url?.startsWith("http") ? att.url : `${baseUrl || ""}${att.url}`;
+                  return (
+                    <a
+                      key={i}
+                      href={imgUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.attachmentLink}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onImageClick?.(imgUrl);
+                      }}
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={att.filename || "Image"}
+                        className={styles.attachmentImage}
+                      />
+                    </a>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -152,6 +274,11 @@ export default function MessageArea({
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStartOffset, setMentionStartOffset] = useState(0);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [lightboxZoomed, setLightboxZoomed] = useState(false);
+  const [lightboxZoomOrigin, setLightboxZoomOrigin] = useState({ x: 50, y: 50 });
+  const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+  const lightboxDragRef = useRef({ isDragging: false, startX: 0, startY: 0, lastX: 0, lastY: 0, hasMoved: false });
   const attachMenuRef = useRef(null);
   const attachMenuCloseTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -581,6 +708,12 @@ export default function MessageArea({
                 currentUserId={currentUserId}
                 baseUrl={baseUrl}
                 onMentionClick={handleMentionClick}
+                onImageClick={(url) => {
+                  setLightboxImage(url);
+                  setLightboxZoomed(false);
+                  setLightboxZoomOrigin({ x: 50, y: 50 });
+                  setLightboxPan({ x: 0, y: 0 });
+                }}
               />
             ))}
             {typing.length > 0 && (
@@ -745,6 +878,31 @@ export default function MessageArea({
             </span>
           )}
         </div>
+      )}
+      {lightboxImage && (
+        <ImageLightbox
+          src={lightboxImage}
+          zoomed={lightboxZoomed}
+          zoomOrigin={lightboxZoomOrigin}
+          pan={lightboxPan}
+          onZoomIn={(origin) => {
+            setLightboxZoomOrigin(origin);
+            setLightboxZoomed(true);
+            setLightboxPan({ x: 0, y: 0 });
+          }}
+          onZoomOut={() => {
+            setLightboxZoomed(false);
+            setLightboxPan({ x: 0, y: 0 });
+          }}
+          onPan={(delta) => setLightboxPan((prev) => ({ x: prev.x + delta.x, y: prev.y + delta.y }))}
+          onClose={() => {
+            setLightboxImage(null);
+            setLightboxZoomed(false);
+            setLightboxPan({ x: 0, y: 0 });
+          }}
+          dragRef={lightboxDragRef}
+          styles={styles}
+        />
       )}
     </div>
   );

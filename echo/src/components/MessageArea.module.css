@@ -486,3 +486,60 @@
 .gifThumb:hover {
   outline: 2px solid var(--accent);
 }
+
+.imageLightboxOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: pointer;
+}
+
+.imageLightboxContent {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  overflow: visible;
+}
+
+.imageLightboxClose {
+  position: fixed;
+  top: 40px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(45, 45, 45, 0.95);
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+}
+
+.imageLightboxClose:hover {
+  background: rgba(55, 55, 55, 0.95);
+}
+
+.imageLightboxImage {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+}
