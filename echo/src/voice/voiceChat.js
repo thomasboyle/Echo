@@ -493,9 +493,9 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             width: { max: 1920 },
             height: { max: 1080 },
             frameRate: {
-              min: 30,
-              ideal: 30,
-              max: 30,
+              min: 60,
+              ideal: 60,
+              max: 60,
             },
           });
         } catch (_) {
