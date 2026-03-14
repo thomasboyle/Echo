@@ -116,6 +116,28 @@ export default function ChannelSidebar({
     return `${h}:${pad(m)}:${pad(s)}`;
   };
 
+  const getVoiceState = (voiceUser, currentUserId, currentWebRtcState) => {
+    const isCurrentUser = !!currentUserId && voiceUser?.id === currentUserId;
+    const mutedFromData = !!(
+      voiceUser?.is_muted ||
+      voiceUser?.muted ||
+      voiceUser?.server_muted ||
+      voiceUser?.serverMute ||
+      voiceUser?.voice_muted
+    );
+    const deafenedFromData = !!(
+      voiceUser?.is_deafened ||
+      voiceUser?.deafened ||
+      voiceUser?.server_deafened ||
+      voiceUser?.serverDeafen ||
+      voiceUser?.voice_deafened
+    );
+    return {
+      muted: isCurrentUser ? !!currentWebRtcState?.isMuted : mutedFromData,
+      deafened: isCurrentUser ? !!currentWebRtcState?.isDeafened : deafenedFromData,
+    };
+  };
+
   const handleInvite = () => {
     setServerMenuOpen(false);
     onOpenModal("inviteCode");
@@ -310,10 +332,37 @@ export default function ChannelSidebar({
                         }}
                       >
                         <span className={styles.voiceChannelUserAvatar}>{u.avatar_emoji || "🐱"}</span>
-                        <span
-                          className={`${styles.voiceChannelUserName} ${u.__optimistic ? styles.voiceJoinPending : ""}`}
-                        >
-                          {u.display_name || "User"}
+                        <span className={styles.voiceChannelUserMeta}>
+                          <span
+                            className={`${styles.voiceChannelUserName} ${u.__optimistic ? styles.voiceJoinPending : ""}`}
+                          >
+                            {u.display_name || "User"}
+                          </span>
+                          {(() => {
+                            const voiceState = getVoiceState(u, user?.id, webrtc);
+                            return (
+                              <>
+                                {voiceState.muted && (
+                                  <span
+                                    className={styles.voiceStateIcon}
+                                    aria-label="Muted"
+                                    title="Muted"
+                                  >
+                                    &#x1F507;
+                                  </span>
+                                )}
+                                {voiceState.deafened && (
+                                  <span
+                                    className={styles.voiceStateIcon}
+                                    aria-label="Deafened"
+                                    title="Deafened"
+                                  >
+                                    &#x1F515;
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </span>
                       </div>
                     ))}

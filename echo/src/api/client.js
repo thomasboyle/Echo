@@ -165,6 +165,30 @@ function createApi(baseUrl, token) {
       }).then((r) =>
         r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.detail || "Failed")))
       ),
+    muteVoiceUser: (channelId, userId, enabled = true) =>
+      fetchWithCatch(`${base}/voice/${channelId}/mute`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ user_id: userId, enabled }),
+      }).then((r) =>
+        r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.detail || "Failed")))
+      ),
+    deafenVoiceUser: (channelId, userId, enabled = true) =>
+      fetchWithCatch(`${base}/voice/${channelId}/deafen`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ user_id: userId, enabled }),
+      }).then((r) =>
+        r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.detail || "Failed")))
+      ),
+    updateVoiceState: (channelId, payload = {}) =>
+      fetchWithCatch(`${base}/voice/${channelId}/state`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      }).then((r) =>
+        r.ok ? r.json() : r.json().then((d) => Promise.reject(new Error(d.detail || "Failed")))
+      ),
     updateProfile: (displayName, avatarEmoji) =>
       fetch(`${base}/users/me`, {
         method: "PATCH",

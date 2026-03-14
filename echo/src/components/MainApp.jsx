@@ -497,6 +497,14 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             if (action === "disconnect" && api && targetUser?.id) {
               api.disconnectVoiceUser(channelId, targetUser.id).catch(() => {});
             }
+            if (action === "serverMute" && api && targetUser?.id) {
+              const next = !(targetUser.is_muted || targetUser.muted || targetUser.server_muted);
+              api.muteVoiceUser(channelId, targetUser.id, next).then(refreshVoiceActive).catch(() => {});
+            }
+            if (action === "serverDeafen" && api && targetUser?.id) {
+              const next = !(targetUser.is_deafened || targetUser.deafened || targetUser.server_deafened);
+              api.deafenVoiceUser(channelId, targetUser.id, next).then(refreshVoiceActive).catch(() => {});
+            }
           }}
         />
       </aside>

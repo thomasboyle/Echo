@@ -187,6 +187,8 @@ def init_db():
             channel_id TEXT NOT NULL,
             user_id TEXT NOT NULL,
             joined_at TEXT NOT NULL,
+            is_muted INTEGER NOT NULL DEFAULT 0,
+            is_deafened INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (channel_id, user_id)
         );
         CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id);
@@ -204,6 +206,12 @@ def init_db():
     channel_columns = [row[1] for row in cur.fetchall()]
     if "voice_bandwidth_kbps" not in channel_columns:
         cur.execute("ALTER TABLE channels ADD COLUMN voice_bandwidth_kbps INTEGER")
+    cur.execute("PRAGMA table_info(voice_sessions)")
+    voice_columns = [row[1] for row in cur.fetchall()]
+    if "is_muted" not in voice_columns:
+        cur.execute("ALTER TABLE voice_sessions ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0")
+    if "is_deafened" not in voice_columns:
+        cur.execute("ALTER TABLE voice_sessions ADD COLUMN is_deafened INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     conn.close()
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -295,6 +303,16 @@ class UpdateChannelBody(BaseModel):
 
 class VoiceDisconnectBody(BaseModel):
     user_id: str
+
+
+class VoiceModerationBody(BaseModel):
+    user_id: str
+    enabled: bool = True
+
+
+class VoiceStateBody(BaseModel):
+    muted: bool | None = None
+    deafened: bool | None = None
 
 
 class UpdateProfileBody(BaseModel):
@@ -723,7 +741,8 @@ async def list_voice_active(server_id: str, authorization: str | None = Header(d
         ) as cur:
             channel_rows = await cur.fetchall()
         async with db.execute(
-            """SELECT v.channel_id, u.id, u.display_name, u.avatar_emoji FROM voice_sessions v
+            """SELECT v.channel_id, u.id, u.display_name, u.avatar_emoji, COALESCE(v.is_muted, 0), COALESCE(v.is_deafened, 0)
+               FROM voice_sessions v
                INNER JOIN channels c ON c.id = v.channel_id AND c.server_id = ? AND c.type = 'voice'
                INNER JOIN users u ON u.id = v.user_id""",
             (server_id,),
@@ -731,10 +750,11 @@ async def list_voice_active(server_id: str, authorization: str | None = Header(d
             user_rows = await cur.fetchall()
     by_channel = {r[0]: {"channel_id": r[0], "started_at": r[1], "users": []} for r in channel_rows}
     for r in user_rows:
-        ch_id, uid, display_name, avatar_emoji = r[0], r[1], r[2], r[3] or "🐱"
+        ch_id, uid, display_name, avatar_emoji, is_muted, is_deafened = r[0], r[1], r[2], r[3] or "🐱", bool(r[4]), bool(r[5])
         if ch_id in by_channel:
             by_channel[ch_id]["users"].append({
                 "id": uid, "display_name": display_name, "avatar_emoji": avatar_emoji,
+                "is_muted": is_muted, "is_deafened": is_deafened,
             })
     return list(by_channel.values())
 
@@ -1000,8 +1020,8 @@ async def voice_join(channel_id: str, authorization: str | None = Header(default
     created = now_iso()
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO voice_sessions (channel_id, user_id, joined_at) VALUES (?,?,?)",
-            (channel_id, user_id, created),
+            "INSERT OR REPLACE INTO voice_sessions (channel_id, user_id, joined_at, is_muted, is_deafened) VALUES (?,?,?,?,?)",
+            (channel_id, user_id, created, 0, 0),
         )
         await db.commit()
     return {"ok": True}
@@ -1067,17 +1087,126 @@ async def voice_disconnect(channel_id: str, body: VoiceDisconnectBody, authoriza
     return {"ok": True}
 
 
+async def ensure_voice_owner_action_permissions(
+    db: aiosqlite.Connection,
+    channel_id: str,
+    requester_id: str,
+    target_id: str,
+) -> None:
+    if requester_id == target_id:
+        raise HTTPException(status_code=400, detail="Cannot target yourself")
+    ch = await get_channel_row(db, channel_id)
+    if not ch or ch.get("type") != "voice":
+        raise HTTPException(status_code=404, detail="Voice channel not found")
+    server_id = ch.get("server_id")
+    if not server_id:
+        raise HTTPException(status_code=403, detail="Server-only voice moderation")
+    async with db.execute(
+        "SELECT owner_id FROM servers WHERE id = ?", (server_id,)
+    ) as cur:
+        owner_row = await cur.fetchone()
+    if not owner_row or owner_row[0] != requester_id:
+        raise HTTPException(status_code=403, detail="Only the server owner can moderate voice members")
+    for uid in (requester_id, target_id):
+        async with db.execute(
+            "SELECT 1 FROM server_members WHERE server_id = ? AND user_id = ?", (server_id, uid)
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=403, detail="Not a member")
+
+
+@app.post("/voice/{channel_id}/mute")
+async def voice_mute(channel_id: str, body: VoiceModerationBody, authorization: str | None = Header(default=None)):
+    requester_id = await get_current_user(authorization)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await ensure_voice_owner_action_permissions(db, channel_id, requester_id, body.user_id)
+        async with db.execute(
+            "SELECT 1 FROM voice_sessions WHERE channel_id = ? AND user_id = ?",
+            (channel_id, body.user_id),
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User is not in this voice channel")
+        await db.execute(
+            "UPDATE voice_sessions SET is_muted = ? WHERE channel_id = ? AND user_id = ?",
+            (1 if body.enabled else 0, channel_id, body.user_id),
+        )
+        await db.commit()
+    return {"ok": True}
+
+
+@app.post("/voice/{channel_id}/deafen")
+async def voice_deafen(channel_id: str, body: VoiceModerationBody, authorization: str | None = Header(default=None)):
+    requester_id = await get_current_user(authorization)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await ensure_voice_owner_action_permissions(db, channel_id, requester_id, body.user_id)
+        async with db.execute(
+            "SELECT 1 FROM voice_sessions WHERE channel_id = ? AND user_id = ?",
+            (channel_id, body.user_id),
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User is not in this voice channel")
+        await db.execute(
+            "UPDATE voice_sessions SET is_deafened = ? WHERE channel_id = ? AND user_id = ?",
+            (1 if body.enabled else 0, channel_id, body.user_id),
+        )
+        await db.commit()
+    return {"ok": True}
+
+
+@app.patch("/voice/{channel_id}/state")
+async def voice_state(channel_id: str, body: VoiceStateBody, authorization: str | None = Header(default=None)):
+    user_id = await get_current_user(authorization)
+    if body.muted is None and body.deafened is None:
+        return {"ok": True}
+    async with aiosqlite.connect(DB_PATH) as db:
+        ch = await get_channel_row(db, channel_id)
+        if not ch or ch.get("type") != "voice":
+            raise HTTPException(status_code=404, detail="Voice channel not found")
+        async with db.execute(
+            "SELECT 1 FROM voice_sessions WHERE channel_id = ? AND user_id = ?",
+            (channel_id, user_id),
+        ) as cur:
+            if await cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="Not in this voice channel")
+        updates = []
+        params: list[object] = []
+        if body.muted is not None:
+            updates.append("is_muted = ?")
+            params.append(1 if body.muted else 0)
+        if body.deafened is not None:
+            updates.append("is_deafened = ?")
+            params.append(1 if body.deafened else 0)
+        if updates:
+            params.extend([channel_id, user_id])
+            await db.execute(
+                f"UPDATE voice_sessions SET {', '.join(updates)} WHERE channel_id = ? AND user_id = ?",
+                params,
+            )
+            await db.commit()
+    return {"ok": True}
+
+
 @app.get("/voice/{channel_id}/peers")
 async def voice_peers(channel_id: str, authorization: str | None = Header(default=None)):
     await get_current_user(authorization)
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            """SELECT u.id, u.display_name, u.avatar_emoji FROM voice_sessions v
+            """SELECT u.id, u.display_name, u.avatar_emoji, COALESCE(v.is_muted, 0), COALESCE(v.is_deafened, 0)
+               FROM voice_sessions v
                JOIN users u ON u.id = v.user_id WHERE v.channel_id = ?""",
             (channel_id,),
         ) as cur:
             rows = await cur.fetchall()
-    return [{"id": r[0], "display_name": r[1], "avatar_emoji": r[2] or "🐱"} for r in rows]
+    return [
+        {
+            "id": r[0],
+            "display_name": r[1],
+            "avatar_emoji": r[2] or "🐱",
+            "is_muted": bool(r[3]),
+            "is_deafened": bool(r[4]),
+        }
+        for r in rows
+    ]
 
 
 @app.post("/voice/echo")

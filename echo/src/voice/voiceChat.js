@@ -155,6 +155,8 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       clearInterval(serverVoicePeersIntervalRef.current);
       serverVoicePeersIntervalRef.current = null;
     }
+    setIsMuted(false);
+    setIsDeafened(false);
     setIsInVoice(false);
     notifyActivity();
   }, [api, notifyActivity]);
@@ -193,6 +195,8 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         signalingWsRef.current = ws;
         setCurrentChannelId(channelId);
         setIsInVoice(true);
+        setIsMuted(false);
+        setIsDeafened(false);
         notifyActivity();
 
         const existingPeers = await api.getVoicePeers(channelId).catch(() => []);
@@ -489,11 +493,17 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
 
   const toggleMute = useCallback(() => {
     if (!localStreamRef.current) return;
+    let nextMuted = false;
     localStreamRef.current.getAudioTracks().forEach((t) => {
       t.enabled = !t.enabled;
+      nextMuted = !t.enabled;
     });
-    setIsMuted((m) => !m);
-  }, []);
+    setIsMuted(nextMuted);
+    const channelId = currentChannelIdRef.current;
+    if (channelId && api?.updateVoiceState) {
+      api.updateVoiceState(channelId, { muted: nextMuted }).catch(() => {});
+    }
+  }, [api]);
 
   const toggleDeafen = useCallback(() => {
     const next = !isDeafened;
@@ -501,7 +511,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     Object.values(audioElementsRef.current).forEach((el) => {
       el.muted = next;
     });
-  }, [isDeafened]);
+    const channelId = currentChannelIdRef.current;
+    if (channelId && api?.updateVoiceState) {
+      api.updateVoiceState(channelId, { deafened: next }).catch(() => {});
+    }
+  }, [isDeafened, api]);
 
   const resumeRemoteAudio = useCallback(() => {
     Object.values(audioElementsRef.current).forEach((el) => {
