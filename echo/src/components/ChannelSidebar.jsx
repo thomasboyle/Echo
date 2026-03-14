@@ -397,7 +397,15 @@ export default function ChannelSidebar({
                     setChannelContextMenu({ x: e.clientX, y: e.clientY, channel: c });
                   }}
                 >
-                  <span className={styles.voiceChannelName}>🔊 {c.name}</span>
+                  <span
+                    className={`${styles.voiceChannelName} ${
+                      currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id
+                        ? styles.voiceChannelNameGlint
+                        : ""
+                    }`}
+                  >
+                    🔊 {c.name}
+                  </span>
                   {activeVoiceTimers[c.id] && (
                     <span className={styles.voiceTimer} aria-label={`Active for ${formatElapsed(activeVoiceTimers[c.id])}`}>
                       {formatElapsed(activeVoiceTimers[c.id])}
