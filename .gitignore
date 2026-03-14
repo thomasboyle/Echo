@@ -1,3 +1,5 @@
 /.env
 /echo/nexus.db
 /echo/uploads/
+/echo/src-tauri/Cargo.toml
+/echo/src-tauri/Cargo.lock

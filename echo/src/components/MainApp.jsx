@@ -264,6 +264,19 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     });
   }, [view, selectedServerId, api]);
 
+  const activeVoiceUsersWithMe = useMemo(() => {
+    const chId = webrtc.currentChannelId;
+    if (!chId || !user) return activeVoiceUsers;
+    const list = activeVoiceUsers[chId] || [];
+    if (list.some((u) => u.id === user.id)) return activeVoiceUsers;
+    const me = {
+      id: user.id,
+      display_name: user.display_name || "User",
+      avatar_emoji: user.avatar_emoji || "🐱",
+    };
+    return { ...activeVoiceUsers, [chId]: [me, ...list] };
+  }, [activeVoiceUsers, webrtc.currentChannelId, user]);
+
   const refreshUiState = useCallback(() => {
     if (refreshInFlightRef.current) {
       refreshPendingRef.current = true;
@@ -434,7 +447,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           webrtc={webrtc}
           currentVoiceChannelId={webrtc.currentChannelId}
           activeVoiceTimers={activeVoiceTimers}
-          activeVoiceUsers={activeVoiceUsers}
+          activeVoiceUsers={activeVoiceUsersWithMe}
           onRefreshVoiceActive={refreshVoiceActive}
           onVoiceUserAction={(channelId, targetUser, action) => {
             if (action === "disconnect" && api && targetUser?.id) {
