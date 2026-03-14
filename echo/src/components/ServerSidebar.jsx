@@ -9,6 +9,7 @@ export default function ServerSidebar({
   onSelectServer,
   unread,
   unreadByServer = {},
+  mentionByServer = {},
   view,
   onViewChange,
   onOpenModal,
@@ -43,7 +44,7 @@ export default function ServerSidebar({
           >
             {s.icon_emoji || "🌐"}
           </span>
-          {(unreadByServer[s.id] || 0) > 0 && <span className={styles.unread} />}
+          {((unreadByServer[s.id] || 0) + (mentionByServer[s.id] || 0)) > 0 && <span className={styles.unread} />}
         </button>
       ))}
       <button

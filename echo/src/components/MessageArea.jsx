@@ -2,6 +2,40 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./MessageArea.module.css";
 import { debouncedSearchGifs, gifToAttachment } from "../api/giphy";
+import notificationSoundUrl from "@assets/sounds/Notification.mp3";
+
+const MENTION_RE = /@([\w-]+)(?=\s|$)/g;
+
+function getMentionedUsernames(content) {
+  if (!content || typeof content !== "string") return new Set();
+  const set = new Set();
+  let m;
+  MENTION_RE.lastIndex = 0;
+  while ((m = MENTION_RE.exec(content)) !== null) set.add(m[1].toLowerCase());
+  return set;
+}
+
+function parseMessageContent(content) {
+  if (!content || typeof content !== "string") return [{ type: "text", value: content || "" }];
+  const re = /@([\w-]+)(?=\s|$)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > lastIndex) parts.push({ type: "text", value: content.slice(lastIndex, m.index) });
+    parts.push({ type: "mention", value: m[0] });
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < content.length) parts.push({ type: "text", value: content.slice(lastIndex) });
+  return parts.length ? parts : [{ type: "text", value: content }];
+}
+
+function playNotificationSound() {
+  if (!notificationSoundUrl) return;
+  const el = new Audio(notificationSoundUrl);
+  el.volume = 0.6;
+  el.play().catch(() => {});
+}
 
 const GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
@@ -22,9 +56,13 @@ function isImageFile(file) {
   return ALLOWED_IMAGE_TYPES.includes(t) || t.startsWith("image/");
 }
 
-function MessageGroup({ messages, currentUserId, baseUrl }) {
+function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick }) {
   const first = messages[0];
   const author = first?.author || {};
+  const handleMentionClick = (mentionText) => {
+    const username = mentionText.startsWith("@") ? mentionText.slice(1) : mentionText;
+    onMentionClick?.(username);
+  };
   return (
     <div className={styles.messageGroup}>
       <div className={styles.messageAvatar}>{author.avatar_emoji || "🐱"}</div>
@@ -35,7 +73,25 @@ function MessageGroup({ messages, currentUserId, baseUrl }) {
         </div>
         {messages.map((m) => (
           <div key={m.id} className={styles.messageContent}>
-            {m.content && <span>{m.content}</span>}
+            {m.content && (
+              <span>
+                {parseMessageContent(m.content).map((part, i) =>
+                  part.type === "mention" ? (
+                    <button
+                      key={i}
+                      type="button"
+                      className={styles.mention}
+                      onClick={() => handleMentionClick(part.value)}
+                      title={`Message ${part.value}`}
+                    >
+                      {part.value}
+                    </button>
+                  ) : (
+                    part.value
+                  )
+                )}
+              </span>
+            )}
             {m.attachments?.length > 0 && (
               <div className={styles.attachmentList}>
                 {m.attachments.map((att, i) => (
@@ -70,8 +126,12 @@ export default function MessageArea({
   token,
   api,
   ws,
+  mentionableUsers = [],
+  onOpenDM,
   onUnreadClear,
+  onMentionClear,
   onMessageReceived,
+  onMentionReceived,
   onMembersRefresh,
   onActivity,
 }) {
@@ -88,9 +148,15 @@ export default function MessageArea({
   const [gifSearching, setGifSearching] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStartOffset, setMentionStartOffset] = useState(0);
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   const attachMenuRef = useRef(null);
   const attachMenuCloseTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messageInputRef = useRef(null);
+  const nextCursorRef = useRef(null);
   const [scrollAtBottom, setScrollAtBottom] = useState(true);
   const listRef = useRef(null);
   const bottomRef = useRef(null);
@@ -101,11 +167,66 @@ export default function MessageArea({
 
   const currentUserId = user?.id;
   const onMessageReceivedRef = useRef(onMessageReceived);
+  const onMentionReceivedRef = useRef(onMentionReceived);
   const onMembersRefreshRef = useRef(onMembersRefresh);
   const onActivityRef = useRef(onActivity);
   onMessageReceivedRef.current = onMessageReceived;
+  onMentionReceivedRef.current = onMentionReceived;
   onMembersRefreshRef.current = onMembersRefresh;
   onActivityRef.current = onActivity;
+
+  const handleMentionClick = useCallback(
+    async (username) => {
+      if (!api || !onOpenDM || !username.trim()) return;
+      try {
+        const list = await api.searchUsers(username.trim());
+        const exact = (list || []).find(
+          (u) => (u.username || "").toLowerCase() === username.trim().toLowerCase()
+        );
+        const target = exact || (list || [])[0];
+        if (target?.id) onOpenDM(target.id);
+      } catch (_) {}
+    },
+    [api, onOpenDM]
+  );
+
+  const mentionSuggestionsFiltered = React.useMemo(() => {
+    if (!mentionQuery.trim()) return mentionableUsers.slice(0, 8);
+    const q = mentionQuery.toLowerCase();
+    return mentionableUsers
+      .filter(
+        (u) =>
+          (u.username || "").toLowerCase().startsWith(q) ||
+          (u.display_name || "").toLowerCase().startsWith(q)
+      )
+      .slice(0, 8);
+  }, [mentionableUsers, mentionQuery]);
+
+  const applyMentionSuggestion = useCallback(
+    (selectedUser) => {
+      const name = selectedUser?.username || selectedUser?.display_name;
+      if (!name) return;
+      const before = input.slice(0, mentionStartOffset);
+      const after = input.slice(messageInputRef.current?.selectionStart ?? input.length);
+      const insert = `@${name} `;
+      const next = before + insert + after;
+      setInput(next.slice(0, 3000));
+      setShowMentionSuggestions(false);
+      setMentionQuery("");
+      setMentionSelectedIndex(0);
+      nextCursorRef.current = before.length + insert.length;
+    },
+    [input, mentionStartOffset]
+  );
+
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el || nextCursorRef.current == null) return;
+    const pos = nextCursorRef.current;
+    nextCursorRef.current = null;
+    el.focus();
+    el.setSelectionRange(pos, pos);
+  }, [input]);
 
   const loadMessages = useCallback(
     async (before = null) => {
@@ -134,10 +255,12 @@ export default function MessageArea({
   useEffect(() => {
     if (channelId) {
       onUnreadClear?.();
+      onMentionClear?.();
       loadMessages();
     } else {
       setMessages([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when channel or loadMessages changes; callbacks are unstable and would cause request loop
   }, [channelId, loadMessages]);
 
   useEffect(() => {
@@ -161,8 +284,12 @@ export default function MessageArea({
         if (scrollAtBottomRef.current && listRef.current) {
           requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
         }
-        if (user && data.content && data.content.includes(user.display_name)) {
-          invoke("show_notification", { title: "Mention", body: `${data.author?.display_name}: ${data.content.slice(0, 50)}...` }).catch(() => {});
+        const mentioned = getMentionedUsernames(data.content);
+        const myName = (user?.username || user?.display_name || "").toLowerCase();
+        if (myName && mentioned.has(myName)) {
+          playNotificationSound();
+          invoke("show_notification", { title: "Mention", body: `${data.author?.display_name}: ${(data.content || "").slice(0, 50)}...` }).catch(() => {});
+          onMentionReceivedRef.current?.(data);
         }
       },
       onTyping: (data) => {
@@ -341,9 +468,53 @@ export default function MessageArea({
   };
 
   const handleKeyDown = (e) => {
+    if (showMentionSuggestions && mentionSuggestionsFiltered.length > 0) {
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        applyMentionSuggestion(mentionSuggestionsFiltered[mentionSelectedIndex]);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionSelectedIndex((i) => (i + 1) % mentionSuggestionsFiltered.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionSelectedIndex(
+          (i) => (i - 1 + mentionSuggestionsFiltered.length) % mentionSuggestionsFiltered.length
+        );
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowMentionSuggestions(false);
+        setMentionQuery("");
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const el = e.target;
+    setInput(el.value);
+    sendTyping();
+    const pos = el.selectionStart;
+    const textBefore = el.value.slice(0, pos);
+    const lastAt = textBefore.lastIndexOf("@");
+    const afterAt = lastAt >= 0 ? textBefore.slice(lastAt + 1) : "";
+    const inMention = lastAt >= 0 && /^\S*$/.test(afterAt);
+    if (inMention && mentionableUsers.length > 0) {
+      setShowMentionSuggestions(true);
+      setMentionQuery(afterAt);
+      setMentionStartOffset(lastAt);
+      setMentionSelectedIndex(0);
+    } else {
+      setShowMentionSuggestions(false);
     }
   };
 
@@ -403,6 +574,7 @@ export default function MessageArea({
                 messages={group}
                 currentUserId={currentUserId}
                 baseUrl={baseUrl}
+                onMentionClick={handleMentionClick}
               />
             ))}
             {typing.length > 0 && (
@@ -530,19 +702,36 @@ export default function MessageArea({
                 </div>
               )}
             </div>
-            <textarea
-              className={styles.input}
-              placeholder={`Message #${name}`}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                sendTyping();
-              }}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              rows={1}
-              maxLength={3000}
-            />
+            <div className={styles.inputWithSuggestions}>
+              <textarea
+                ref={messageInputRef}
+                className={styles.input}
+                placeholder={`Message #${name}`}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                rows={1}
+                maxLength={3000}
+              />
+              {showMentionSuggestions && mentionSuggestionsFiltered.length > 0 && (
+                <div className={styles.mentionSuggestions}>
+                  {mentionSuggestionsFiltered.map((u, i) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      className={`${styles.mentionSuggestionItem} ${i === mentionSelectedIndex ? styles.mentionSuggestionActive : ""}`}
+                      onClick={() => applyMentionSuggestion(u)}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <span className={styles.mentionSuggestionAvatar}>{u.avatar_emoji || "🐱"}</span>
+                      <span className={styles.mentionSuggestionName}>{u.display_name || u.username || "User"}</span>
+                      <span className={styles.mentionSuggestionUsername}>@{u.username || u.display_name || ""}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           {input.length >= 2800 && (
             <span className={input.length >= 3000 ? styles.charErr : styles.charWarn}>

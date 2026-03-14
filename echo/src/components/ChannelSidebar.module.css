@@ -175,6 +175,24 @@
   color: var(--text-primary);
 }
 
+.channelItemName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.channelMention {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--red);
+  margin-left: auto;
+}
+
 .channelItem.activeVoice {
   color: var(--green);
 }
@@ -248,6 +266,18 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+}
+
+.voiceLiveBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #c53030;
+  padding: 1px 5px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  line-height: 1.2;
 }
 
 .voiceStateIcon {

@@ -1,8 +1,15 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: { "@assets": path.resolve(__dirname, "../assets") },
+  },
   clearScreen: false,
   build: {
     minify: "esbuild",

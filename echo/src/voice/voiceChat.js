@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+import joinSoundUrl from "@assets/sounds/VoiceChat_Join.mp3";
+import leaveSoundUrl from "@assets/sounds/VoiceChat_Leave.mp3";
+
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const STORAGE_AUDIO_INPUT = "nexus_audio_input_id";
 const STORAGE_AUDIO_OUTPUT = "nexus_audio_output_id";
@@ -23,6 +26,16 @@ function getStoredAudioOutputId() {
   }
 }
 
+function playSound(url) {
+  if (!url) return;
+  const el = new Audio(url);
+  const outputId = getStoredAudioOutputId();
+  if (outputId && typeof el.setSinkId === "function") {
+    el.setSinkId(outputId).catch(() => {});
+  }
+  el.play().catch(() => {});
+}
+
 export function useWebRTC(baseUrl, token, api, onActivity) {
   const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -34,6 +47,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const [localStream, setLocalStream] = useState(null);
   const [localScreenStream, setLocalScreenStream] = useState(null);
   const [isScreensharing, setIsScreensharing] = useState(false);
+  const [peerScreensharing, setPeerScreensharing] = useState({});
   const [hasVideoSource, setHasVideoSource] = useState(false);
   const currentChannelIdRef = useRef(null);
   currentChannelIdRef.current = currentChannelId;
@@ -47,11 +61,9 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const iceCandidateQueueRef = useRef({});
   const screenStreamRef = useRef(null);
   const myUserIdRef = useRef(null);
-  const makingOfferRef = useRef({});
-  const ignoreOfferRef = useRef({});
-  const shouldInitiateOffer = useCallback((localUserId, remoteUserId) => {
-    if (!localUserId || !remoteUserId) return true;
-    return String(localUserId).localeCompare(String(remoteUserId)) < 0;
+  const shouldInitiateOffer = useCallback((myId, peerId) => {
+    if (!myId || !peerId) return false;
+    return String(myId) < String(peerId);
   }, []);
   const notifyActivity = useCallback(() => {
     onActivity?.();
@@ -126,6 +138,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   }, []);
 
   const leaveVoice = useCallback(async () => {
+    playSound(leaveSoundUrl);
     setVoiceError(null);
     const ch = currentChannelIdRef.current;
     if (ch && api) await api.leaveVoice(ch).catch(() => {});
@@ -143,8 +156,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     audioElementsRef.current = {};
     peerStreamsRef.current = {};
     iceCandidateQueueRef.current = {};
-    makingOfferRef.current = {};
-    ignoreOfferRef.current = {};
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
@@ -158,6 +169,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     setLocalScreenStream(null);
     setHasVideoSource(false);
     setIsScreensharing(false);
+    setPeerScreensharing({});
     setCurrentChannelId(null);
     setPeers([]);
     setServerVoicePeers([]);
@@ -183,6 +195,15 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         await leaveVoice();
       }
       try {
+        let myUserId = null;
+        try {
+          const me = await api.getMe();
+          myUserId = me?.id || null;
+          myUserIdRef.current = myUserId;
+        } catch (_) {
+          myUserIdRef.current = null;
+        }
+
         const audioInputId = getStoredAudioInputId();
         const audioConstraint = audioInputId ? { deviceId: audioInputId } : true;
         let stream;
@@ -199,12 +220,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         localStreamRef.current = stream;
         setLocalStream(stream);
         await api.joinVoice(channelId);
-        let myId = null;
-        try {
-          const me = await api.getMe();
-          myId = me?.id || null;
-        } catch (_) {}
-        myUserIdRef.current = myId;
         const url = baseUrl.replace(/^http/, "ws").replace(/\/$/, "");
         const wsUrl = `${url}/voice-signal/${channelId}?token=${encodeURIComponent(token)}`;
         const ws = new WebSocket(wsUrl);
@@ -214,6 +229,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         setIsMuted(false);
         setIsDeafened(false);
         notifyActivity();
+        playSound(joinSoundUrl);
 
         const existingPeers = await api.getVoicePeers(channelId).catch(() => []);
         setServerVoicePeers(existingPeers || []);
@@ -233,11 +249,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
           for (const p of peerList || []) {
             if (!p?.id || (myId && p.id === myId)) continue;
             const peerId = p.id;
-            const amOfferer = shouldInitiateOffer(myId, peerId);
-            if (!amOfferer) {
-              addPeer(peerId, p.display_name || "User", null, false, p.avatar_emoji || "🐱");
-              continue;
-            }
+            if (!shouldInitiateOffer(myId, peerId)) continue;
             if (peerConnectionsRef.current[peerId]) continue;
             const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
             peerConnectionsRef.current[peerId] = pc;
@@ -267,17 +279,8 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             if (screenStreamRef.current) {
               screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
             }
-            if (makingOfferRef.current[peerId]) continue;
-            makingOfferRef.current[peerId] = true;
-            let offer = null;
-            try {
-              offer = await pc.createOffer();
-              if (pc.signalingState !== "stable") continue;
-              await pc.setLocalDescription(offer);
-            } finally {
-              makingOfferRef.current[peerId] = false;
-            }
-            if (!offer) continue;
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({ type: "offer", to_user_id: peerId, offer }));
             addPeer(peerId, p.display_name || "User", null, false, p.avatar_emoji || "🐱");
           }
@@ -293,6 +296,8 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         };
 
         ws.onmessage = async (ev) => {
+          // Ignore delayed messages from a stale voice session during fast channel switches.
+          if (signalingWsRef.current !== ws || currentChannelIdRef.current !== channelId) return;
           try {
             const data = JSON.parse(ev.data);
             const fromId = data.from_user_id;
@@ -304,19 +309,37 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             }
 
             if (data.type === "peer_left") {
-              removePeer(data.user_id);
+              const leftUserId = data.user_id;
+              if (leftUserId !== myUserIdRef.current) {
+                playSound(leaveSoundUrl);
+              }
+              setPeerScreensharing((prev) => {
+                const next = { ...prev };
+                delete next[leftUserId];
+                return next;
+              });
+              removePeer(leftUserId);
               notifyActivity();
+              return;
+            }
+
+            if (data.type === "screenshare_state") {
+              setPeerScreensharing((prev) => ({ ...prev, [fromId]: !!data.screensharing }));
               return;
             }
 
             if (data.type === "peer_joined") {
               const newUserId = data.user_id;
-              if (!shouldInitiateOffer(myUserIdRef.current, newUserId)) {
+              if (newUserId !== myUserIdRef.current) {
+                playSound(joinSoundUrl);
+              }
+              if (peerConnectionsRef.current[newUserId]) return;
+              const myId = myUserIdRef.current;
+              if (!shouldInitiateOffer(myId, newUserId)) {
                 addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
                 notifyActivity();
                 return;
               }
-              if (peerConnectionsRef.current[newUserId]) return;
               const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
               peerConnectionsRef.current[newUserId] = pc;
               pc.onconnectionstatechange = () => {
@@ -345,63 +368,51 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
               if (screenStreamRef.current) {
                 screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
               }
-              if (makingOfferRef.current[newUserId]) return;
-              makingOfferRef.current[newUserId] = true;
-              let offer = null;
-              try {
-                offer = await pc.createOffer();
-                if (pc.signalingState !== "stable") return;
-                await pc.setLocalDescription(offer);
-              } finally {
-                makingOfferRef.current[newUserId] = false;
-              }
-              if (!offer) return;
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
               ws.send(JSON.stringify({ type: "offer", to_user_id: newUserId, offer }));
               addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
+              if (screenStreamRef.current && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true, to_user_id: newUserId }));
+              }
               notifyActivity();
               return;
             }
 
             if (data.type === "offer") {
-              let pc = peerConnectionsRef.current[fromId];
-              if (!pc) {
-                pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-                peerConnectionsRef.current[fromId] = pc;
-                pc.onconnectionstatechange = () => {
-                  if (pc.connectionState === "connected") {
-                    const el = audioElementsRef.current[fromId];
-                    if (el?.srcObject && el.paused) el.play().catch(() => {});
-                  }
-                };
-                pc.onicecandidate = (e) => {
-                  if (e.candidate)
-                    ws.send(
-                      JSON.stringify({
-                        type: "ice-candidate",
-                        to_user_id: fromId,
-                        candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
-                      })
-                    );
-                };
-                pc.ontrack = (e) => {
-                  const track = e.track;
-                  const stream = mergeTrackIntoPeerStream(fromId, track, e.streams?.[0]);
-                  playRemoteStream(fromId, stream);
-                  addPeer(fromId, data.from_display_name || "User", stream, false, data.from_avatar_emoji || "🐱");
-                };
-                stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-                if (screenStreamRef.current) {
-                  screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
-                }
+              if (peerConnectionsRef.current[fromId]) {
+                const existingPc = peerConnectionsRef.current[fromId];
+                existingPc.close();
+                delete peerConnectionsRef.current[fromId];
               }
-
-              const polite = !shouldInitiateOffer(myUserIdRef.current, fromId);
-              const offerCollision = makingOfferRef.current[fromId] || pc.signalingState !== "stable";
-              ignoreOfferRef.current[fromId] = !polite && offerCollision;
-              if (ignoreOfferRef.current[fromId]) return;
-
-              if (offerCollision) {
-                await pc.setLocalDescription({ type: "rollback" }).catch(() => {});
+              delete peerStreamsRef.current[fromId];
+              const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+              peerConnectionsRef.current[fromId] = pc;
+              pc.onconnectionstatechange = () => {
+                if (pc.connectionState === "connected") {
+                  const el = audioElementsRef.current[fromId];
+                  if (el?.srcObject && el.paused) el.play().catch(() => {});
+                }
+              };
+              pc.onicecandidate = (e) => {
+                if (e.candidate)
+                  ws.send(
+                    JSON.stringify({
+                      type: "ice-candidate",
+                      to_user_id: fromId,
+                      candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
+                    })
+                  );
+              };
+              pc.ontrack = (e) => {
+                const track = e.track;
+                const stream = mergeTrackIntoPeerStream(fromId, track, e.streams?.[0]);
+                playRemoteStream(fromId, stream);
+                addPeer(fromId, data.from_display_name || "User", stream, false, data.from_avatar_emoji || "🐱");
+              };
+              stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+              if (screenStreamRef.current) {
+                screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
               }
               await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
               await drainIceQueue(fromId);
@@ -414,18 +425,17 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             if (data.type === "answer") {
               const pc = peerConnectionsRef.current[fromId];
               if (pc && data.answer) {
-                if (pc.signalingState === "have-local-offer") {
-                  await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                  await drainIceQueue(fromId);
-                }
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                await drainIceQueue(fromId);
               }
               return;
             }
 
             if (data.type === "ice-candidate" && data.candidate) {
               const pc = peerConnectionsRef.current[fromId];
+              if (!pc) return;
               const cand = new RTCIceCandidate(data.candidate);
-              if (!pc || !pc.remoteDescription) {
+              if (!pc.remoteDescription) {
                 if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
                 iceCandidateQueueRef.current[fromId].push(cand);
                 return;
@@ -504,6 +514,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             ws.send(JSON.stringify({ type: "offer", to_user_id: peerId, offer }));
           }
         }
+        ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true }));
       }
     } catch (err) {
       setIsScreensharing(false);
@@ -535,6 +546,9 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     screenStreamRef.current = null;
     setLocalScreenStream(null);
     setIsScreensharing(false);
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "screenshare_state", screensharing: false }));
+    }
     notifyActivity();
   }, [notifyActivity]);
 
@@ -585,6 +599,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     localStream,
     localScreenStream,
     isScreensharing,
+    peerScreensharing,
     hasVideoSource,
     joinVoice,
     leaveVoice,

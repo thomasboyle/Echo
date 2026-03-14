@@ -12,6 +12,7 @@ export default function ChannelSidebar({
   user,
   members,
   api,
+  mentionByChannel = {},
   onOpenModal,
   onModalData,
   onChannelsChange,
@@ -247,7 +248,8 @@ export default function ChannelSidebar({
             setChannelContextMenu({ x: e.clientX, y: e.clientY, channel: c });
           }}
         >
-          # {c.name}
+          <span className={styles.channelItemName}># {c.name}</span>
+          {(mentionByChannel[c.id] || 0) > 0 && <span className={styles.channelMention} aria-label="Mention" />}
         </button>
       ))}
       <div className={styles.section}>
@@ -269,7 +271,7 @@ export default function ChannelSidebar({
             const isOptimisticJoin = optimisticVoiceChannelId === c.id;
             const shouldRenderCurrentUser =
               !!user?.id && (isOptimisticJoin || (currentVoiceChannelId === c.id && !hasCurrentUser));
-            const renderedVoiceUsers = shouldRenderCurrentUser
+            const renderedVoiceUsersSource = shouldRenderCurrentUser
               ? [
                   {
                     id: user.id,
@@ -280,6 +282,13 @@ export default function ChannelSidebar({
                   ...channelUsers,
                 ]
               : channelUsers;
+            const seenVoiceUserIds = new Set();
+            const renderedVoiceUsers = renderedVoiceUsersSource.filter((voiceUser) => {
+              const voiceUserId = voiceUser?.id;
+              if (!voiceUserId || seenVoiceUserIds.has(voiceUserId)) return false;
+              seenVoiceUserIds.add(voiceUserId);
+              return true;
+            });
             return (
               <>
                 <button
@@ -291,10 +300,6 @@ export default function ChannelSidebar({
                     if (currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id) return;
                     setOptimisticVoiceChannelId(c.id);
                     try {
-                      if (currentVoiceChannelId) {
-                        await webrtc?.leaveVoice?.();
-                        onRefreshVoiceActive?.();
-                      }
                       await webrtc?.joinVoice?.(c.id);
                       onRefreshVoiceActive?.();
                     } catch (_) {}
@@ -339,9 +344,16 @@ export default function ChannelSidebar({
                             {u.display_name || "User"}
                           </span>
                           {(() => {
+                            const isScreensharing =
+                              u.id === user?.id ? webrtc?.isScreensharing : webrtc?.peerScreensharing?.[u.id];
                             const voiceState = getVoiceState(u, user?.id, webrtc);
                             return (
                               <>
+                                {isScreensharing && (
+                                  <span className={styles.voiceLiveBadge} title="Screensharing">
+                                    LIVE
+                                  </span>
+                                )}
                                 {voiceState.muted && (
                                   <span
                                     className={styles.voiceStateIcon}

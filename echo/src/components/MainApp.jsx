@@ -73,6 +73,14 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const [view, setView] = useState("servers");
   const [unread, setUnread] = useState({});
   const [unreadByServer, setUnreadByServer] = useState({});
+  const [mentionByChannel, setMentionByChannel] = useState({});
+  const [mentionByServer, setMentionByServer] = useState({});
+  const mentionByChannelRef = useRef(mentionByChannel);
+  mentionByChannelRef.current = mentionByChannel;
+  const selectedChannelIdRef = useRef(selectedChannelId);
+  const selectedServerIdRef = useRef(selectedServerId);
+  selectedChannelIdRef.current = selectedChannelId;
+  selectedServerIdRef.current = selectedServerId;
   const [modal, setModal] = useState(null);
   const [modalData, setModalData] = useState(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -232,6 +240,9 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
 
   const currentChannel = channels.find((c) => c.id === selectedChannelId) || dmList.find((d) => d.id === selectedChannelId);
   const showVoiceBar = webrtc.isInVoice;
+  const mentionableUsers = view === "servers"
+    ? (members || []).filter((m) => m.id !== user?.id)
+    : (dmList || []).map((d) => d.other_user).filter(Boolean);
   const voiceChannelName = webrtc.currentChannelId && (channels.find((c) => c.id === webrtc.currentChannelId)?.name || "Voice");
 
   useEffect(() => {
@@ -461,6 +472,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           }}
           unread={unread}
           unreadByServer={unreadByServer}
+          mentionByServer={mentionByServer}
           view={view}
           onViewChange={setView}
           onOpenModal={setModal}
@@ -481,6 +493,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           user={user}
           members={members}
           api={api}
+          mentionByChannel={mentionByChannel}
           onOpenModal={setModal}
           onModalData={(data) => setModalData({ ...data, serverId: selectedServerId, serverName: servers.find((s) => s.id === selectedServerId)?.name, user })}
           onChannelsChange={() => selectedServerId && loadChannels(selectedServerId)}
@@ -590,13 +603,42 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           token={token}
           api={api}
           ws={ws}
+          mentionableUsers={mentionableUsers}
+          onOpenDM={async (userId) => {
+            if (!api) return;
+            const ch = await api.openDM(userId);
+            const other = members?.find((m) => m.id === userId) || dmList?.find((d) => d.other_user?.id === userId)?.other_user;
+            setDmList((prev) => {
+              if (prev.some((d) => d.other_user?.id === userId)) return prev;
+              return [{ id: ch.id, other_user: other || { id: userId, display_name: "User" } }, ...prev];
+            });
+            setSelectedChannelId(ch.id);
+            setView("dms");
+          }}
           onUnreadClear={() => selectedChannelId && setUnread((u) => ({ ...u, [selectedChannelId]: 0 }))}
+          onMentionClear={useCallback(() => {
+            const cid = selectedChannelIdRef.current;
+            const sid = selectedServerIdRef.current;
+            if (!cid) return;
+            const count = mentionByChannelRef.current[cid] || 0;
+            setMentionByChannel((c) => ({ ...c, [cid]: 0 }));
+            if (sid && count > 0) {
+              setMentionByServer((s) => ({ ...s, [sid]: Math.max(0, (s[sid] || 0) - count) }));
+            }
+          }, [])}
           onMessageReceived={(data) => {
             if (data.channel_id !== selectedChannelId) {
               setUnread((u) => ({ ...u, [data.channel_id]: (u[data.channel_id] || 0) + 1 }));
               if (data.server_id) {
                 setUnreadByServer((s) => ({ ...s, [data.server_id]: (s[data.server_id] || 0) + 1 }));
               }
+            }
+          }}
+          onMentionReceived={(data) => {
+            if (data.channel_id === selectedChannelId) return;
+            setMentionByChannel((c) => ({ ...c, [data.channel_id]: (c[data.channel_id] || 0) + 1 }));
+            if (data.server_id) {
+              setMentionByServer((s) => ({ ...s, [data.server_id]: (s[data.server_id] || 0) + 1 }));
             }
           }}
           onMembersRefresh={selectedServerId ? () => loadMembers(selectedServerId) : undefined}
