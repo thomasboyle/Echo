@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./MessageArea.module.css";
 import { debouncedSearchGifs, gifToAttachment } from "../api/giphy";
@@ -262,6 +262,12 @@ export default function MessageArea({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when channel or loadMessages changes; callbacks are unstable and would cause request loop
   }, [channelId, loadMessages]);
+
+  useLayoutEffect(() => {
+    if (!channelId || loading) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [channelId, loading]);
 
   useEffect(() => {
     ws.setCallbacks({

@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import styles from "./ChannelSidebar.module.css";
 
+function formatBadgeCount(n) {
+  if (n <= 0) return null;
+  return n > 99 ? "99+" : String(n);
+}
+
 export default function ChannelSidebar({
   view,
   serverName,
@@ -12,6 +17,7 @@ export default function ChannelSidebar({
   user,
   members,
   api,
+  unread = {},
   mentionByChannel = {},
   onOpenModal,
   onModalData,
@@ -207,6 +213,11 @@ export default function ChannelSidebar({
             >
               <span className={styles.dmAvatar}>{dm.other_user?.avatar_emoji || "🐱"}</span>
               {dm.other_user?.display_name || "User"}
+              {formatBadgeCount((unread[dm.id] || 0) + (mentionByChannel[dm.id] || 0)) && (
+                <span className={styles.channelUnreadBadge} aria-label="Unread">
+                  {formatBadgeCount((unread[dm.id] || 0) + (mentionByChannel[dm.id] || 0))}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -275,7 +286,11 @@ export default function ChannelSidebar({
           }}
         >
           <span className={styles.channelItemName}># {c.name}</span>
-          {(mentionByChannel[c.id] || 0) > 0 && <span className={styles.channelMention} aria-label="Mention" />}
+          {formatBadgeCount((unread[c.id] || 0) + (mentionByChannel[c.id] || 0)) && (
+            <span className={styles.channelUnreadBadge} aria-label="Unread">
+              {formatBadgeCount((unread[c.id] || 0) + (mentionByChannel[c.id] || 0))}
+            </span>
+          )}
         </button>
       ))}
       <div className={styles.section}>

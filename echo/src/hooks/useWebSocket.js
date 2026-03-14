@@ -113,3 +113,42 @@ export function useWebSocket(baseUrl, token) {
     setCallbacks,
   };
 }
+
+const NOTIFICATIONS_BACKOFF = 5000;
+
+export function useNotificationsWebSocket(baseUrl, token, onMessageRef) {
+  const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (!baseUrl || !token) return;
+    const url = baseUrl.replace(/^http/, "ws");
+    const wsUrl = `${url}/ws/notifications?token=${encodeURIComponent(token)}`;
+    let hadOpened = false;
+    const doConnect = () => {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onopen = () => { hadOpened = true; };
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (hadOpened && baseUrl && token) {
+          reconnectTimerRef.current = setTimeout(doConnect, NOTIFICATIONS_BACKOFF);
+        }
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === "message" && onMessageRef?.current) onMessageRef.current(data);
+        } catch (_) {}
+      };
+    };
+    doConnect();
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [baseUrl, token]);
+}

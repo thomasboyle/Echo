@@ -3,6 +3,11 @@ import styles from "./ServerSidebar.module.css";
 
 const EMOJI_COLORS = ["#5865f2", "#57f287", "#fee75c", "#eb459e", "#ed4245"];
 
+function formatBadgeCount(n) {
+  if (n <= 0) return null;
+  return n > 99 ? "99+" : String(n);
+}
+
 export default function ServerSidebar({
   servers,
   selectedServerId,
@@ -10,6 +15,7 @@ export default function ServerSidebar({
   unread,
   unreadByServer = {},
   mentionByServer = {},
+  totalDmUnread = 0,
   view,
   onViewChange,
   onOpenModal,
@@ -25,9 +31,14 @@ export default function ServerSidebar({
         title="Direct Messages"
       >
         <span className={styles.homeIcon}>H</span>
+        {formatBadgeCount(totalDmUnread) && (
+          <span className={styles.unreadBadge} aria-label={`${totalDmUnread} unread`}>{formatBadgeCount(totalDmUnread)}</span>
+        )}
       </button>
       <div className={styles.divider} />
-      {servers.map((s) => (
+      {servers.map((s) => {
+        const serverCount = (unreadByServer[s.id] || 0) + (mentionByServer[s.id] || 0);
+        return (
         <button
           type="button"
           key={s.id}
@@ -44,9 +55,11 @@ export default function ServerSidebar({
           >
             {s.icon_emoji || "🌐"}
           </span>
-          {((unreadByServer[s.id] || 0) + (mentionByServer[s.id] || 0)) > 0 && <span className={styles.unread} />}
+          {formatBadgeCount(serverCount) && (
+            <span className={styles.unreadBadge} aria-label={`${serverCount} unread`}>{formatBadgeCount(serverCount)}</span>
+          )}
         </button>
-      ))}
+      );})}
       <button
         type="button"
         className={styles.addBtn}

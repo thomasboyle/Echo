@@ -9,8 +9,18 @@ import MessageArea from "./MessageArea";
 import MembersSidebar from "./MembersSidebar";
 import VoiceBar from "./VoiceBar";
 import Modals from "./Modals";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useWebSocket, useNotificationsWebSocket } from "../hooks/useWebSocket";
 import { useWebRTC } from "../hooks/useWebRTC";
+
+const MENTION_RE = /@([\w-]+)(?=\s|$)/g;
+function getMentionedUsernames(content) {
+  if (!content || typeof content !== "string") return new Set();
+  const set = new Set();
+  let m;
+  MENTION_RE.lastIndex = 0;
+  while ((m = MENTION_RE.exec(content)) !== null) set.add(m[1].toLowerCase());
+  return set;
+}
 import styles from "./MainApp.module.css";
 
 function VideoSlot({ stream, label, muted, onSelect }) {
@@ -97,6 +107,24 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const refreshPendingRef = useRef(false);
 
   const ws = useWebSocket(baseUrl.replace(/^http/, "ws"), token);
+  const notificationCallbackRef = useRef(null);
+  useEffect(() => {
+    notificationCallbackRef.current = (data) => {
+      if (data.channel_id === selectedChannelIdRef.current) return;
+      setUnread((u) => ({ ...u, [data.channel_id]: (u[data.channel_id] || 0) + 1 }));
+      if (data.server_id) {
+        setUnreadByServer((s) => ({ ...s, [data.server_id]: (s[data.server_id] || 0) + 1 }));
+      }
+      const myName = (user?.username || user?.display_name || "").toLowerCase();
+      if (myName && getMentionedUsernames(data.content).has(myName)) {
+        setMentionByChannel((c) => ({ ...c, [data.channel_id]: (c[data.channel_id] || 0) + 1 }));
+        if (data.server_id) {
+          setMentionByServer((s) => ({ ...s, [data.server_id]: (s[data.server_id] || 0) + 1 }));
+        }
+      }
+    };
+  }, [user]);
+  useNotificationsWebSocket(baseUrl, token, notificationCallbackRef);
   const webrtc = useWebRTC(baseUrl, token, api, () => {
     if (refreshInFlightRef.current) {
       refreshPendingRef.current = true;
@@ -473,6 +501,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           unread={unread}
           unreadByServer={unreadByServer}
           mentionByServer={mentionByServer}
+          totalDmUnread={dmList.reduce((sum, d) => sum + (unread[d.id] || 0) + (mentionByChannel[d.id] || 0), 0)}
           view={view}
           onViewChange={setView}
           onOpenModal={setModal}
@@ -493,6 +522,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           user={user}
           members={members}
           api={api}
+          unread={unread}
           mentionByChannel={mentionByChannel}
           onOpenModal={setModal}
           onModalData={(data) => setModalData({ ...data, serverId: selectedServerId, serverName: servers.find((s) => s.id === selectedServerId)?.name, user })}

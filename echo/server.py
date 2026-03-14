@@ -226,6 +226,7 @@ init_db()
 # ---------------------------------------------------------------------------
 
 channel_connections: dict[str, list[tuple[str, WebSocket]]] = {}
+notification_connections: dict[str, list[WebSocket]] = {}
 voice_rooms: dict[str, list[tuple[str, WebSocket]]] = {}
 
 
@@ -363,6 +364,20 @@ async def get_channel_row(db: aiosqlite.Connection, channel_id: str) -> dict | N
     return {"id": row[0], "server_id": row[1], "name": row[2], "type": row[3], "server_name": row[4] or ""}
 
 
+async def get_channel_member_ids(db: aiosqlite.Connection, ch: dict, channel_id: str) -> list[str]:
+    if ch.get("server_id"):
+        async with db.execute(
+            "SELECT user_id FROM server_members WHERE server_id = ?", (ch["server_id"],)
+        ) as cur:
+            rows = await cur.fetchall()
+        return [r[0] for r in rows]
+    async with db.execute(
+        "SELECT user1_id, user2_id FROM dm_channels WHERE id = ?", (channel_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return list(row) if row else []
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -372,6 +387,12 @@ async def lifespan(app: FastAPI):
     yield
     for conns in channel_connections.values():
         for _, ws in conns:
+            try:
+                await ws.close()
+            except Exception:
+                pass
+    for conns in notification_connections.values():
+        for ws in conns:
             try:
                 await ws.close()
             except Exception:
@@ -1241,6 +1262,30 @@ async def voice_test_echo(request: Request, authorization: str | None = Header(d
     return Response(content=body, media_type=content_type)
 
 
+# ----- WebSocket: notifications (unread badges) -----
+
+@app.websocket("/ws/notifications")
+async def notifications_websocket(websocket: WebSocket, token: str = ""):
+    user_id = verify_token(token)
+    if not user_id:
+        await websocket.close(code=4001)
+        return
+    await websocket.accept()
+    if user_id not in notification_connections:
+        notification_connections[user_id] = []
+    notification_connections[user_id].append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if user_id in notification_connections:
+            notification_connections[user_id] = [w for w in notification_connections[user_id] if w != websocket]
+            if not notification_connections[user_id]:
+                del notification_connections[user_id]
+
+
 # ----- WebSocket: channel messages -----
 
 @app.websocket("/ws/{channel_id}")
@@ -1336,6 +1381,16 @@ async def channel_websocket(websocket: WebSocket, channel_id: str, token: str = 
                         await ws.send_json(payload)
                     except Exception:
                         pass
+                async with aiosqlite.connect(DB_PATH) as db:
+                    member_ids = await get_channel_member_ids(db, ch, channel_id)
+                for uid in member_ids:
+                    if uid == user_id:
+                        continue
+                    for ws in notification_connections.get(uid, []):
+                        try:
+                            await ws.send_json(payload)
+                        except Exception:
+                            pass
             elif msg_type == "typing":
                 for uid, ws in channel_connections.get(channel_id, []):
                     if uid != user_id:
