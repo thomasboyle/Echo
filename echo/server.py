@@ -1478,6 +1478,26 @@ async def voice_signal_websocket(websocket: WebSocket, channel_id: str, token: s
         except Exception:
             pass
 
+    existing_ids = [uid for uid, _ in voice_rooms.get(channel_id, []) if uid != user_id]
+    if existing_ids:
+        placeholders = ",".join("?" * len(existing_ids))
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                f"SELECT id, display_name, avatar_emoji FROM users WHERE id IN ({placeholders})",
+                existing_ids,
+            ) as cur:
+                rows = await cur.fetchall()
+        try:
+            await websocket.send_json({
+                "type": "existing_peers",
+                "peers": [
+                    {"id": r[0], "display_name": r[1], "avatar_emoji": r[2] or "🐱"}
+                    for r in rows
+                ],
+            })
+        except Exception:
+            pass
+
     try:
         while True:
             data = await websocket.receive_json()

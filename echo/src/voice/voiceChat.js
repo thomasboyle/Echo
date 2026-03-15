@@ -328,6 +328,13 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
               return;
             }
 
+            if (data.type === "existing_peers") {
+              const peerList = data.peers || [];
+              const myId = myUserIdRef.current;
+              await sendOffersToPeers(peerList, myId, signalingWsRef);
+              return;
+            }
+
             if (data.type === "peer_joined") {
               const newUserId = data.user_id;
               if (newUserId !== myUserIdRef.current) {
