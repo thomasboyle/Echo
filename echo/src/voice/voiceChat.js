@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import joinSoundUrl from "@assets/sounds/VoiceChat_Join.mp3";
 import leaveSoundUrl from "@assets/sounds/VoiceChat_Leave.mp3";
 
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const STORAGE_AUDIO_INPUT = "nexus_audio_input_id";
 const STORAGE_AUDIO_OUTPUT = "nexus_audio_output_id";
 
@@ -36,6 +36,25 @@ function playSound(url) {
   el.play().catch(() => {});
 }
 
+function normalizeIceServers(servers) {
+  if (!Array.isArray(servers)) return DEFAULT_ICE_SERVERS;
+  const normalized = servers
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => {
+      const urls = entry.urls;
+      const urlsValid =
+        typeof urls === "string" || (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
+      if (!urlsValid) return null;
+      const out = { urls };
+      if (typeof entry.username === "string") out.username = entry.username;
+      if (typeof entry.credential === "string") out.credential = entry.credential;
+      if (typeof entry.credentialType === "string") out.credentialType = entry.credentialType;
+      return out;
+    })
+    .filter(Boolean);
+  return normalized.length > 0 ? normalized : DEFAULT_ICE_SERVERS;
+}
+
 export function useWebRTC(baseUrl, token, api, onActivity) {
   const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -61,8 +80,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const iceCandidateQueueRef = useRef({});
   const screenStreamRef = useRef(null);
   const myUserIdRef = useRef(null);
+  const iceServersRef = useRef(DEFAULT_ICE_SERVERS);
   const shouldInitiateOffer = useCallback((myId, peerId) => {
-    if (!myId || !peerId) return false;
+    if (!peerId) return false;
+    // If identity fetch is transiently unavailable, prefer initiating to avoid deadlocks.
+    if (!myId) return true;
     return String(myId) < String(peerId);
   }, []);
   const notifyActivity = useCallback(() => {
@@ -203,6 +225,12 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
         } catch (_) {
           myUserIdRef.current = null;
         }
+        try {
+          const cfg = await api.getVoiceIceServers?.();
+          iceServersRef.current = normalizeIceServers(cfg?.ice_servers);
+        } catch (_) {
+          iceServersRef.current = DEFAULT_ICE_SERVERS;
+        }
 
         const audioInputId = getStoredAudioInputId();
         const audioConstraint = audioInputId ? { deviceId: audioInputId } : true;
@@ -251,7 +279,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             const peerId = p.id;
             if (!shouldInitiateOffer(myId, peerId)) continue;
             if (peerConnectionsRef.current[peerId]) continue;
-            const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+            const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
             peerConnectionsRef.current[peerId] = pc;
             pc.onconnectionstatechange = () => {
               if (pc.connectionState === "connected") {
@@ -347,7 +375,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
                 notifyActivity();
                 return;
               }
-              const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+              const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
               peerConnectionsRef.current[newUserId] = pc;
               pc.onconnectionstatechange = () => {
                 if (pc.connectionState === "connected") {
@@ -393,7 +421,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
                 delete peerConnectionsRef.current[fromId];
               }
               delete peerStreamsRef.current[fromId];
-              const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+              const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
               peerConnectionsRef.current[fromId] = pc;
               pc.onconnectionstatechange = () => {
                 if (pc.connectionState === "connected") {
@@ -439,9 +467,13 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
             }
 
             if (data.type === "ice-candidate" && data.candidate) {
-              const pc = peerConnectionsRef.current[fromId];
-              if (!pc) return;
               const cand = new RTCIceCandidate(data.candidate);
+              const pc = peerConnectionsRef.current[fromId];
+              if (!pc) {
+                if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
+                iceCandidateQueueRef.current[fromId].push(cand);
+                return;
+              }
               if (!pc.remoteDescription) {
                 if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
                 iceCandidateQueueRef.current[fromId].push(cand);

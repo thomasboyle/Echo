@@ -44,6 +44,7 @@ RATE_LIMIT_INVITE_PER_WINDOW = 30
 FAILED_LOGIN_THRESHOLD = 5
 LOCKOUT_SEC = 15 * 60  # 15 minutes
 IS_PRODUCTION = os.environ.get("NEXUS_ENV") == "production"
+DEFAULT_ICE_SERVERS = [{"urls": "stun:stun.l.google.com:19302"}]
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -88,6 +89,39 @@ def get_client_ip(request: Request) -> str:
 _rate_auth: dict[str, list[float]] = defaultdict(list)
 _rate_invite: dict[str, list[float]] = defaultdict(list)
 _failed_logins: dict[str, list[float]] = defaultdict(list)
+
+
+def get_configured_ice_servers() -> list[dict]:
+    raw = os.environ.get("NEXUS_ICE_SERVERS_JSON") or os.environ.get("NEXUS_ICE_SERVERS")
+    if not raw:
+        return DEFAULT_ICE_SERVERS
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return DEFAULT_ICE_SERVERS
+    if not isinstance(parsed, list):
+        return DEFAULT_ICE_SERVERS
+    valid = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        urls = entry.get("urls")
+        if isinstance(urls, str):
+            urls = [urls]
+        if not isinstance(urls, list) or not urls:
+            continue
+        urls = [u for u in urls if isinstance(u, str) and u.strip()]
+        if not urls:
+            continue
+        normalized = {"urls": urls if len(urls) > 1 else urls[0]}
+        if isinstance(entry.get("username"), str):
+            normalized["username"] = entry["username"]
+        if isinstance(entry.get("credential"), str):
+            normalized["credential"] = entry["credential"]
+        if isinstance(entry.get("credentialType"), str):
+            normalized["credentialType"] = entry["credentialType"]
+        valid.append(normalized)
+    return valid or DEFAULT_ICE_SERVERS
 
 
 def _prune_old(entries: list[float], window_sec: float) -> None:
@@ -1276,6 +1310,12 @@ async def voice_peers(channel_id: str, authorization: str | None = Header(defaul
         }
         for r in rows
     ]
+
+
+@app.get("/voice/config/ice-servers")
+async def voice_ice_servers(authorization: str | None = Header(default=None)):
+    await get_current_user(authorization)
+    return {"ice_servers": get_configured_ice_servers()}
 
 
 @app.post("/voice/echo")

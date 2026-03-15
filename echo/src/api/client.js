@@ -148,6 +148,8 @@ function createApi(baseUrl, token) {
       }).then(parseJson),
     getVoicePeers: (channelId) =>
       fetchWithCatch(`${base}/voice/${channelId}/peers`, { headers: authHeaders() }).then(parseJson),
+    getVoiceIceServers: () =>
+      fetchWithCatch(`${base}/voice/config/ice-servers`, { headers: authHeaders() }).then(parseJson),
     joinVoice: (channelId) =>
       fetchWithCatch(`${base}/voice/${channelId}/join`, {
         method: "POST",

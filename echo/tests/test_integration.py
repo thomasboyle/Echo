@@ -72,6 +72,150 @@ def ws_send_receive(path_query, send_obj):
     return asyncio.run(run())
 
 
+async def _collect_ws_messages(ws, into_list):
+    try:
+        while True:
+            msg = await ws.recv()
+            into_list.append(json.loads(msg))
+    except (websockets.ConnectionClosed, asyncio.CancelledError):
+        pass
+
+
+async def _run_voice_multi_client_signaling(ws_base_url):
+    loop = asyncio.get_event_loop()
+
+    def do_request(method, path, body=None, token=None):
+        return request(method, path, body=body, token=token)
+
+    async def http(method, path, body=None, token=None):
+        return await loop.run_in_executor(None, lambda: do_request(method, path, body=body, token=token))
+
+    ua, ub, uc, ud = f"vmulti_a_{_unique()}", f"vmulti_b_{_unique()}", f"vmulti_c_{_unique()}", f"vmulti_d_{_unique()}"
+    pw = "password"
+    code_a, ra = await http("POST", "/register", body={"username": ua, "password": pw, "display_name": "VA"})
+    code_b, rb = await http("POST", "/register", body={"username": ub, "password": pw, "display_name": "VB"})
+    code_c, rc = await http("POST", "/register", body={"username": uc, "password": pw, "display_name": "VC"})
+    code_d, rd = await http("POST", "/register", body={"username": ud, "password": pw, "display_name": "VD"})
+    if code_a != 200 or not ra or "token" not in ra:
+        return f"register A failed: {code_a} {ra}"
+    if code_b != 200 or not rb or "token" not in rb:
+        return f"register B failed: {code_b} {rb}"
+    if code_c != 200 or not rc or "token" not in rc:
+        return f"register C failed: {code_c} {rc}"
+    if code_d != 200 or not rd or "token" not in rd:
+        return f"register D failed: {code_d} {rd}"
+    token_a, token_b, token_c, token_d = ra["token"], rb["token"], rc["token"], rd["token"]
+    user_a_id, user_b_id = ra["user"]["id"], rb["user"]["id"]
+    user_c_id, user_d_id = rc["user"]["id"], rd["user"]["id"]
+
+    _, create = await http("POST", "/servers", body={"name": "VMulti"}, token=token_a)
+    server_id = create["id"]
+    _, channels = await http("GET", f"/servers/{server_id}/channels", token=token_a)
+    voice_ch = next(c for c in channels if c["type"] == "voice")
+    channel_id = voice_ch["id"]
+    _, invite = await http("GET", f"/servers/{server_id}/invite", token=token_a)
+    await http("POST", f"/servers/{server_id}/join", body={"invite_code": invite["invite_code"]}, token=token_b)
+    await http("POST", f"/servers/{server_id}/join", body={"invite_code": invite["invite_code"]}, token=token_c)
+    await http("POST", f"/servers/{server_id}/join", body={"invite_code": invite["invite_code"]}, token=token_d)
+
+    join_path = f"/voice/{channel_id}/join"
+    leave_path = f"/voice/{channel_id}/leave"
+    ws_path = f"/voice-signal/{channel_id}"
+
+    await http("POST", join_path, token=token_a)
+    url_a = f"{ws_base_url}{ws_path}?token={urllib.parse.quote(token_a)}"
+    ws_a = await asyncio.wait_for(websockets.connect(url_a, close_timeout=2), timeout=TIMEOUT)
+    msgs_a = []
+    task_a = asyncio.create_task(_collect_ws_messages(ws_a, msgs_a))
+
+    await http("POST", join_path, token=token_b)
+    url_b = f"{ws_base_url}{ws_path}?token={urllib.parse.quote(token_b)}"
+    ws_b = await asyncio.wait_for(websockets.connect(url_b, close_timeout=2), timeout=TIMEOUT)
+    msgs_b = []
+    task_b = asyncio.create_task(_collect_ws_messages(ws_b, msgs_b))
+
+    await asyncio.sleep(0.6)
+    peer_joined_b = [m for m in msgs_a if m.get("type") == "peer_joined" and m.get("user_id") == user_b_id]
+    existing_a = [m for m in msgs_b if m.get("type") == "existing_peers"]
+    if not peer_joined_b:
+        return f"A did not receive peer_joined(B): got {[m.get('type') for m in msgs_a]}"
+    if not existing_a:
+        return f"B did not receive existing_peers: got {[m.get('type') for m in msgs_b]}"
+    peer_ids_b = {p.get("id") for p in existing_a[0].get("peers", [])}
+    if user_a_id not in peer_ids_b:
+        return f"B existing_peers missing A: {peer_ids_b}"
+
+    await http("POST", join_path, token=token_c)
+    url_c = f"{ws_base_url}{ws_path}?token={urllib.parse.quote(token_c)}"
+    ws_c = await asyncio.wait_for(websockets.connect(url_c, close_timeout=2), timeout=TIMEOUT)
+    msgs_c = []
+    task_c = asyncio.create_task(_collect_ws_messages(ws_c, msgs_c))
+
+    await asyncio.sleep(0.6)
+    peer_joined_c_a = [m for m in msgs_a if m.get("type") == "peer_joined" and m.get("user_id") == user_c_id]
+    peer_joined_c_b = [m for m in msgs_b if m.get("type") == "peer_joined" and m.get("user_id") == user_c_id]
+    existing_c = [m for m in msgs_c if m.get("type") == "existing_peers"]
+    if not peer_joined_c_a:
+        return f"A did not receive peer_joined(C): got {[m.get('type') for m in msgs_a]}"
+    if not peer_joined_c_b:
+        return f"B did not receive peer_joined(C): got {[m.get('type') for m in msgs_b]}"
+    if not existing_c:
+        return f"C did not receive existing_peers: got {[m.get('type') for m in msgs_c]}"
+    peer_ids_c = {p.get("id") for p in existing_c[0].get("peers", [])}
+    if user_a_id not in peer_ids_c or user_b_id not in peer_ids_c:
+        return f"C existing_peers missing A or B: {peer_ids_c}"
+
+    await ws_b.close()
+    task_b.cancel()
+    try:
+        await task_b
+    except asyncio.CancelledError:
+        pass
+    await http("POST", leave_path, token=token_b)
+
+    await asyncio.sleep(0.5)
+    peer_left_a = [m for m in msgs_a if m.get("type") == "peer_left" and m.get("user_id") == user_b_id]
+    peer_left_c = [m for m in msgs_c if m.get("type") == "peer_left" and m.get("user_id") == user_b_id]
+    if not peer_left_a:
+        return f"A did not receive peer_left(B): got {[m.get('type') for m in msgs_a]}"
+    if not peer_left_c:
+        return f"C did not receive peer_left(B): got {[m.get('type') for m in msgs_c]}"
+
+    await http("POST", join_path, token=token_d)
+    url_d = f"{ws_base_url}{ws_path}?token={urllib.parse.quote(token_d)}"
+    ws_d = await asyncio.wait_for(websockets.connect(url_d, close_timeout=2), timeout=TIMEOUT)
+    msgs_d = []
+    task_d = asyncio.create_task(_collect_ws_messages(ws_d, msgs_d))
+
+    await asyncio.sleep(0.6)
+    peer_joined_d_a = [m for m in msgs_a if m.get("type") == "peer_joined" and m.get("user_id") == user_d_id]
+    peer_joined_d_c = [m for m in msgs_c if m.get("type") == "peer_joined" and m.get("user_id") == user_d_id]
+    existing_d = [m for m in msgs_d if m.get("type") == "existing_peers"]
+    if not peer_joined_d_a:
+        return f"A did not receive peer_joined(D): got {[m.get('type') for m in msgs_a]}"
+    if not peer_joined_d_c:
+        return f"C did not receive peer_joined(D): got {[m.get('type') for m in msgs_c]}"
+    if not existing_d:
+        return f"D did not receive existing_peers: got {[m.get('type') for m in msgs_d]}"
+    peer_ids_d = {p.get("id") for p in existing_d[0].get("peers", [])}
+    if user_a_id not in peer_ids_d or user_c_id not in peer_ids_d:
+        return f"D existing_peers missing A or C: {peer_ids_d}"
+
+    for ws in (ws_a, ws_c, ws_d):
+        await ws.close()
+    for t in (task_a, task_c, task_d):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
+    await http("POST", leave_path, token=token_a)
+    await http("POST", leave_path, token=token_c)
+    await http("POST", leave_path, token=token_d)
+
+    return None
+
+
 class TestLogin(unittest.TestCase):
     def setUp(self):
         if SKIP:
@@ -246,6 +390,12 @@ class TestVoice(unittest.TestCase):
         data = ws_send_receive(path, {"type": "offer", "offer": {"type": "offer", "sdp": "test"}})
         self.assertIsInstance(data, dict)
         self.assertEqual(data.get("type"), "no_peers")
+
+    def test_voice_multi_client_signaling(self):
+        if not websockets:
+            self.skipTest("websockets package required")
+        result = asyncio.run(_run_voice_multi_client_signaling(ws_base()))
+        self.assertIsNone(result, result)
 
 
 class TestMessagesAndRealtime(unittest.TestCase):
