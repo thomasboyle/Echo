@@ -7,6 +7,8 @@ import leaveSoundUrl from "@assets/sounds/VoiceChat_Leave.mp3";
 const DEFAULT_ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const STORAGE_AUDIO_INPUT = "nexus_audio_input_id";
 const STORAGE_AUDIO_OUTPUT = "nexus_audio_output_id";
+const DEFAULT_DISPLAY_NAME = "User";
+const DEFAULT_AVATAR_EMOJI = "🐱";
 
 function getStoredAudioInputId() {
   try {
@@ -36,22 +38,36 @@ function playSound(url) {
   el.play().catch(() => {});
 }
 
+function playAudioWithRetry(el, retries = 10) {
+  el.play().then(() => {}).catch(() => {
+    if (retries > 0) setTimeout(() => playAudioWithRetry(el, retries - 1), 400);
+  });
+}
+
+function addTracksToPeerConnection(pc, mediaStream) {
+  if (!pc || !mediaStream) return;
+  const tracks = mediaStream.getTracks();
+  for (let i = 0; i < tracks.length; i++) {
+    pc.addTrack(tracks[i], mediaStream);
+  }
+}
+
 function normalizeIceServers(servers) {
   if (!Array.isArray(servers)) return DEFAULT_ICE_SERVERS;
-  const normalized = servers
-    .filter((entry) => entry && typeof entry === "object")
-    .map((entry) => {
-      const urls = entry.urls;
-      const urlsValid =
-        typeof urls === "string" || (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
-      if (!urlsValid) return null;
-      const out = { urls };
-      if (typeof entry.username === "string") out.username = entry.username;
-      if (typeof entry.credential === "string") out.credential = entry.credential;
-      if (typeof entry.credentialType === "string") out.credentialType = entry.credentialType;
-      return out;
-    })
-    .filter(Boolean);
+  const normalized = [];
+  for (let i = 0; i < servers.length; i++) {
+    const entry = servers[i];
+    if (!entry || typeof entry !== "object") continue;
+    const urls = entry.urls;
+    const urlsValid =
+      typeof urls === "string" || (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
+    if (!urlsValid) continue;
+    const out = { urls };
+    if (typeof entry.username === "string") out.username = entry.username;
+    if (typeof entry.credential === "string") out.credential = entry.credential;
+    if (typeof entry.credentialType === "string") out.credentialType = entry.credentialType;
+    normalized.push(out);
+  }
   return normalized.length > 0 ? normalized : DEFAULT_ICE_SERVERS;
 }
 
@@ -76,6 +92,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const signalingWsRef = useRef(null);
   const peerConnectionsRef = useRef({});
   const peerStreamsRef = useRef({});
+  const peerTracksRef = useRef({});
   const audioElementsRef = useRef({});
   const iceCandidateQueueRef = useRef({});
   const screenStreamRef = useRef(null);
@@ -83,7 +100,6 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const iceServersRef = useRef(DEFAULT_ICE_SERVERS);
   const shouldInitiateOffer = useCallback((myId, peerId) => {
     if (!peerId) return false;
-    // If identity fetch is transiently unavailable, prefer initiating to avoid deadlocks.
     if (!myId) return true;
     return String(myId) < String(peerId);
   }, []);
@@ -91,15 +107,20 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     onActivity?.();
   }, [onActivity]);
 
-  const addPeer = useCallback((userId, displayName, stream = null, isSpeaking = false, avatarEmoji = "🐱") => {
+  const addPeer = useCallback((userId, displayName, stream = null, isSpeaking = false, avatarEmoji = DEFAULT_AVATAR_EMOJI) => {
     setPeers((prev) => {
-      const existing = prev.find((p) => p.userId === userId);
-      if (existing) {
-        return prev.map((p) =>
-          p.userId === userId
-            ? { ...p, displayName, stream: stream ?? p.stream, isSpeaking, avatarEmoji: avatarEmoji ?? p.avatarEmoji }
-            : p
-        );
+      for (let i = 0; i < prev.length; i++) {
+        const p = prev[i];
+        if (p.userId !== userId) continue;
+        const next = prev.slice();
+        next[i] = {
+          ...p,
+          displayName,
+          stream: stream ?? p.stream,
+          isSpeaking,
+          avatarEmoji: avatarEmoji ?? p.avatarEmoji,
+        };
+        return next;
       }
       return [...prev, { userId, displayName, stream, isSpeaking, avatarEmoji }];
     });
@@ -118,6 +139,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       delete audioElementsRef.current[userId];
     }
     delete peerStreamsRef.current[userId];
+    delete peerTracksRef.current[userId];
     setPeers((prev) => prev.filter((p) => p.userId !== userId));
   }, []);
 
@@ -126,8 +148,20 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     if (!stream) {
       stream = streamFromEvent || new MediaStream([track]);
       peerStreamsRef.current[userId] = stream;
-    } else if (!stream.getTracks().includes(track)) {
-      stream.addTrack(track);
+      const trackSet = new Set();
+      for (const t of stream.getTracks()) trackSet.add(t);
+      peerTracksRef.current[userId] = trackSet;
+      return stream;
+    }
+    let trackSet = peerTracksRef.current[userId];
+    if (!trackSet) {
+      trackSet = new Set();
+      for (const t of stream.getTracks()) trackSet.add(t);
+      peerTracksRef.current[userId] = trackSet;
+    }
+    if (!trackSet.has(track)) {
+      if (!stream.getTracks().includes(track)) stream.addTrack(track);
+      trackSet.add(track);
     }
     return stream;
   }, []);
@@ -151,12 +185,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     if (outputId && typeof el.setSinkId === "function") {
       el.setSinkId(outputId).catch(() => {});
     }
-    const tryPlay = (retries = 10) => {
-      el.play().then(() => {}).catch(() => {
-        if (retries > 0) setTimeout(() => tryPlay(retries - 1), 400);
-      });
-    };
-    tryPlay();
+    playAudioWithRetry(el);
   }, []);
 
   const leaveVoice = useCallback(async () => {
@@ -168,15 +197,20 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       signalingWsRef.current.close();
       signalingWsRef.current = null;
     }
-    Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
+    const peerConnections = peerConnectionsRef.current;
+    for (const peerId in peerConnections) {
+      peerConnections[peerId].close();
+    }
     peerConnectionsRef.current = {};
-    Object.keys(audioElementsRef.current).forEach((id) => {
-      const el = audioElementsRef.current[id];
+    const audioElements = audioElementsRef.current;
+    for (const id in audioElements) {
+      const el = audioElements[id];
       el.srcObject = null;
       if (el.parentNode) el.parentNode.removeChild(el);
-    });
+    }
     audioElementsRef.current = {};
     peerStreamsRef.current = {};
+    peerTracksRef.current = {};
     iceCandidateQueueRef.current = {};
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -301,185 +335,199 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
               const track = e.track;
               const stream = mergeTrackIntoPeerStream(peerId, track, e.streams?.[0]);
               playRemoteStream(peerId, stream);
-              addPeer(peerId, p.display_name || "User", stream, false, p.avatar_emoji || "🐱");
+              addPeer(peerId, p.display_name || DEFAULT_DISPLAY_NAME, stream, false, p.avatar_emoji || DEFAULT_AVATAR_EMOJI);
             };
-            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+            addTracksToPeerConnection(pc, stream);
             if (screenStreamRef.current) {
-              screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
+              addTracksToPeerConnection(pc, screenStreamRef.current);
             }
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({ type: "offer", to_user_id: peerId, offer }));
-            addPeer(peerId, p.display_name || "User", null, false, p.avatar_emoji || "🐱");
+            addPeer(peerId, p.display_name || DEFAULT_DISPLAY_NAME, null, false, p.avatar_emoji || DEFAULT_AVATAR_EMOJI);
           }
         };
 
         const drainIceQueue = async (uid) => {
           const queue = iceCandidateQueueRef.current[uid] || [];
           delete iceCandidateQueueRef.current[uid];
+          if (queue.length === 0) return;
           const pc = peerConnectionsRef.current[uid];
-          for (const c of queue) {
-            await pc?.addIceCandidate(c).catch(() => {});
-          }
+          if (!pc) return;
+          for (const c of queue) await pc.addIceCandidate(c).catch(() => {});
         };
 
         ws.onmessage = async (ev) => {
-          // Ignore delayed messages from a stale voice session during fast channel switches.
           if (signalingWsRef.current !== ws || currentChannelIdRef.current !== channelId) return;
           try {
             const data = JSON.parse(ev.data);
             const fromId = data.from_user_id;
-
-            if (data.type === "force_disconnect") {
-              leaveVoice();
-              notifyActivity();
-              return;
-            }
-
-            if (data.type === "peer_left") {
-              const leftUserId = data.user_id;
-              if (leftUserId !== myUserIdRef.current) {
-                playSound(leaveSoundUrl);
-              }
-              setPeerScreensharing((prev) => {
-                const next = { ...prev };
-                delete next[leftUserId];
-                return next;
-              });
-              removePeer(leftUserId);
-              notifyActivity();
-              return;
-            }
-
-            if (data.type === "screenshare_state") {
-              setPeerScreensharing((prev) => ({ ...prev, [fromId]: !!data.screensharing }));
-              return;
-            }
-
-            if (data.type === "existing_peers") {
-              const peerList = data.peers || [];
-              const myId = myUserIdRef.current;
-              await sendOffersToPeers(peerList, myId, signalingWsRef);
-              return;
-            }
-
-            if (data.type === "peer_joined") {
-              const newUserId = data.user_id;
-              if (newUserId !== myUserIdRef.current) {
-                playSound(joinSoundUrl);
-              }
-              if (peerConnectionsRef.current[newUserId]) return;
-              const myId = myUserIdRef.current;
-              if (!shouldInitiateOffer(myId, newUserId)) {
-                addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
+            switch (data.type) {
+              case "force_disconnect": {
+                leaveVoice();
                 notifyActivity();
                 return;
               }
-              const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-              peerConnectionsRef.current[newUserId] = pc;
-              pc.onconnectionstatechange = () => {
-                if (pc.connectionState === "connected") {
-                  const el = audioElementsRef.current[newUserId];
-                  if (el?.srcObject && el.paused) el.play().catch(() => {});
+              case "peer_left": {
+                const leftUserId = data.user_id;
+                if (leftUserId !== myUserIdRef.current) {
+                  playSound(leaveSoundUrl);
                 }
-              };
-              pc.onicecandidate = (e) => {
-                if (e.candidate && ws.readyState === WebSocket.OPEN)
-                  ws.send(
-                    JSON.stringify({
-                      type: "ice-candidate",
-                      to_user_id: newUserId,
-                      candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
-                    })
-                  );
-              };
-              pc.ontrack = (e) => {
-                const track = e.track;
-                const stream = mergeTrackIntoPeerStream(newUserId, track, e.streams?.[0]);
-                playRemoteStream(newUserId, stream);
-                addPeer(newUserId, data.display_name || "User", stream, false, data.avatar_emoji || "🐱");
-              };
-              stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-              if (screenStreamRef.current) {
-                screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
+                setPeerScreensharing((prev) => {
+                  const next = { ...prev };
+                  delete next[leftUserId];
+                  return next;
+                });
+                removePeer(leftUserId);
+                notifyActivity();
+                return;
               }
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              ws.send(JSON.stringify({ type: "offer", to_user_id: newUserId, offer }));
-              addPeer(newUserId, data.display_name || "User", null, false, data.avatar_emoji || "🐱");
-              if (screenStreamRef.current && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true, to_user_id: newUserId }));
+              case "screenshare_state": {
+                setPeerScreensharing((prev) => ({ ...prev, [fromId]: !!data.screensharing }));
+                return;
               }
-              notifyActivity();
-              return;
-            }
-
-            if (data.type === "offer") {
-              if (peerConnectionsRef.current[fromId]) {
-                const existingPc = peerConnectionsRef.current[fromId];
-                existingPc.close();
-                delete peerConnectionsRef.current[fromId];
+              case "existing_peers": {
+                const peerList = data.peers || [];
+                const myId = myUserIdRef.current;
+                await sendOffersToPeers(peerList, myId, signalingWsRef);
+                return;
               }
-              delete peerStreamsRef.current[fromId];
-              const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
-              peerConnectionsRef.current[fromId] = pc;
-              pc.onconnectionstatechange = () => {
-                if (pc.connectionState === "connected") {
-                  const el = audioElementsRef.current[fromId];
-                  if (el?.srcObject && el.paused) el.play().catch(() => {});
+              case "peer_joined": {
+                const newUserId = data.user_id;
+                if (newUserId !== myUserIdRef.current) {
+                  playSound(joinSoundUrl);
                 }
-              };
-              pc.onicecandidate = (e) => {
-                if (e.candidate)
-                  ws.send(
-                    JSON.stringify({
-                      type: "ice-candidate",
-                      to_user_id: fromId,
-                      candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
-                    })
+                if (peerConnectionsRef.current[newUserId]) return;
+                const myId = myUserIdRef.current;
+                if (!shouldInitiateOffer(myId, newUserId)) {
+                  addPeer(newUserId, data.display_name || DEFAULT_DISPLAY_NAME, null, false, data.avatar_emoji || DEFAULT_AVATAR_EMOJI);
+                  notifyActivity();
+                  return;
+                }
+                const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+                peerConnectionsRef.current[newUserId] = pc;
+                pc.onconnectionstatechange = () => {
+                  if (pc.connectionState === "connected") {
+                    const el = audioElementsRef.current[newUserId];
+                    if (el?.srcObject && el.paused) el.play().catch(() => {});
+                  }
+                };
+                pc.onicecandidate = (e) => {
+                  if (e.candidate && ws.readyState === WebSocket.OPEN)
+                    ws.send(
+                      JSON.stringify({
+                        type: "ice-candidate",
+                        to_user_id: newUserId,
+                        candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
+                      })
+                    );
+                };
+                pc.ontrack = (e) => {
+                  const track = e.track;
+                  const stream = mergeTrackIntoPeerStream(newUserId, track, e.streams?.[0]);
+                  playRemoteStream(newUserId, stream);
+                  addPeer(
+                    newUserId,
+                    data.display_name || DEFAULT_DISPLAY_NAME,
+                    stream,
+                    false,
+                    data.avatar_emoji || DEFAULT_AVATAR_EMOJI
                   );
-              };
-              pc.ontrack = (e) => {
-                const track = e.track;
-                const stream = mergeTrackIntoPeerStream(fromId, track, e.streams?.[0]);
-                playRemoteStream(fromId, stream);
-                addPeer(fromId, data.from_display_name || "User", stream, false, data.from_avatar_emoji || "🐱");
-              };
-              stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-              if (screenStreamRef.current) {
-                screenStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, screenStreamRef.current));
+                };
+                addTracksToPeerConnection(pc, stream);
+                if (screenStreamRef.current) {
+                  addTracksToPeerConnection(pc, screenStreamRef.current);
+                }
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                ws.send(JSON.stringify({ type: "offer", to_user_id: newUserId, offer }));
+                addPeer(
+                  newUserId,
+                  data.display_name || DEFAULT_DISPLAY_NAME,
+                  null,
+                  false,
+                  data.avatar_emoji || DEFAULT_AVATAR_EMOJI
+                );
+                if (screenStreamRef.current && ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: "screenshare_state", screensharing: true, to_user_id: newUserId }));
+                }
+                notifyActivity();
+                return;
               }
-              await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-              await drainIceQueue(fromId);
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              ws.send(JSON.stringify({ type: "answer", to_user_id: fromId, answer }));
-              return;
-            }
-
-            if (data.type === "answer") {
-              const pc = peerConnectionsRef.current[fromId];
-              if (pc && data.answer) {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+              case "offer": {
+                if (peerConnectionsRef.current[fromId]) {
+                  const existingPc = peerConnectionsRef.current[fromId];
+                  existingPc.close();
+                  delete peerConnectionsRef.current[fromId];
+                }
+                delete peerStreamsRef.current[fromId];
+                delete peerTracksRef.current[fromId];
+                const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+                peerConnectionsRef.current[fromId] = pc;
+                pc.onconnectionstatechange = () => {
+                  if (pc.connectionState === "connected") {
+                    const el = audioElementsRef.current[fromId];
+                    if (el?.srcObject && el.paused) el.play().catch(() => {});
+                  }
+                };
+                pc.onicecandidate = (e) => {
+                  if (e.candidate)
+                    ws.send(
+                      JSON.stringify({
+                        type: "ice-candidate",
+                        to_user_id: fromId,
+                        candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate,
+                      })
+                    );
+                };
+                pc.ontrack = (e) => {
+                  const track = e.track;
+                  const stream = mergeTrackIntoPeerStream(fromId, track, e.streams?.[0]);
+                  playRemoteStream(fromId, stream);
+                  addPeer(
+                    fromId,
+                    data.from_display_name || DEFAULT_DISPLAY_NAME,
+                    stream,
+                    false,
+                    data.from_avatar_emoji || DEFAULT_AVATAR_EMOJI
+                  );
+                };
+                addTracksToPeerConnection(pc, stream);
+                if (screenStreamRef.current) {
+                  addTracksToPeerConnection(pc, screenStreamRef.current);
+                }
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
                 await drainIceQueue(fromId);
-              }
-              return;
-            }
-
-            if (data.type === "ice-candidate" && data.candidate) {
-              const cand = new RTCIceCandidate(data.candidate);
-              const pc = peerConnectionsRef.current[fromId];
-              if (!pc) {
-                if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
-                iceCandidateQueueRef.current[fromId].push(cand);
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({ type: "answer", to_user_id: fromId, answer }));
                 return;
               }
-              if (!pc.remoteDescription) {
-                if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
-                iceCandidateQueueRef.current[fromId].push(cand);
+              case "answer": {
+                const pc = peerConnectionsRef.current[fromId];
+                if (pc && data.answer) {
+                  await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                  await drainIceQueue(fromId);
+                }
                 return;
               }
-              await pc.addIceCandidate(cand).catch(() => {});
+              case "ice-candidate": {
+                if (!data.candidate) return;
+                const cand = new RTCIceCandidate(data.candidate);
+                const pc = peerConnectionsRef.current[fromId];
+                if (!pc) {
+                  if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
+                  iceCandidateQueueRef.current[fromId].push(cand);
+                  return;
+                }
+                if (!pc.remoteDescription) {
+                  if (!iceCandidateQueueRef.current[fromId]) iceCandidateQueueRef.current[fromId] = [];
+                  iceCandidateQueueRef.current[fromId].push(cand);
+                  return;
+                }
+                await pc.addIceCandidate(cand).catch(() => {});
+                return;
+              }
             }
           } catch (err) {}
         };
@@ -537,9 +585,7 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
               max: 60,
             },
           });
-        } catch (_) {
-          // Some platforms ignore or reject strict display track constraints.
-        }
+        } catch (_) {}
       }
       screenStreamRef.current = stream;
       setLocalScreenStream(stream);
@@ -551,8 +597,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         const tracks = stream.getTracks();
         if (tracks.length > 0) {
-          for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
-            tracks.forEach((track) => pc.addTrack(track, stream));
+          for (const peerId in peerConnectionsRef.current) {
+            const pc = peerConnectionsRef.current[peerId];
+            for (let i = 0; i < tracks.length; i++) {
+              pc.addTrack(tracks[i], stream);
+            }
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({ type: "offer", to_user_id: peerId, offer }));
@@ -576,10 +625,19 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
     if (!stream) return;
     const ws = signalingWsRef.current;
     const streamTracks = stream.getTracks();
-    for (const [peerId, pc] of Object.entries(peerConnectionsRef.current)) {
-      const sendersToRemove = pc.getSenders().filter((s) => s.track && streamTracks.includes(s.track));
-      sendersToRemove.forEach((sender) => pc.removeTrack(sender));
-      if (sendersToRemove.length > 0) {
+    const streamTrackSet = new Set(streamTracks);
+    for (const peerId in peerConnectionsRef.current) {
+      const pc = peerConnectionsRef.current[peerId];
+      const senders = pc.getSenders();
+      let removedCount = 0;
+      for (let i = 0; i < senders.length; i++) {
+        const sender = senders[i];
+        if (sender.track && streamTrackSet.has(sender.track)) {
+          pc.removeTrack(sender);
+          removedCount++;
+        }
+      }
+      if (removedCount > 0) {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         if (ws?.readyState === WebSocket.OPEN) {
@@ -614,9 +672,8 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   const toggleDeafen = useCallback(() => {
     const next = !isDeafened;
     setIsDeafened(next);
-    Object.values(audioElementsRef.current).forEach((el) => {
-      el.muted = next;
-    });
+    const audioElements = audioElementsRef.current;
+    for (const peerId in audioElements) audioElements[peerId].muted = next;
     const channelId = currentChannelIdRef.current;
     if (channelId && api?.updateVoiceState) {
       api.updateVoiceState(channelId, { deafened: next }).catch(() => {});
@@ -624,9 +681,11 @@ export function useWebRTC(baseUrl, token, api, onActivity) {
   }, [isDeafened, api]);
 
   const resumeRemoteAudio = useCallback(() => {
-    Object.values(audioElementsRef.current).forEach((el) => {
+    const audioElements = audioElementsRef.current;
+    for (const peerId in audioElements) {
+      const el = audioElements[peerId];
       if (el.srcObject && el.paused) el.play().catch(() => {});
-    });
+    }
   }, []);
 
   useEffect(() => () => {
