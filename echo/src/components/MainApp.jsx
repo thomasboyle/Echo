@@ -507,6 +507,19 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     if (view === "dms") setLastViewedDmId(id);
   }, [view]);
 
+  const selectServerTextChannel = useCallback((serverId, list = []) => {
+    const textChannels = (list || []).filter((c) => c.type === "text");
+    if (!textChannels.length) {
+      setSelectedChannelId(null);
+      return;
+    }
+    const currentId = selectedChannelIdRef.current;
+    if (textChannels.some((c) => c.id === currentId)) return;
+    const preferredId = lastViewedChannelByServerRef.current[serverId];
+    const preferred = textChannels.find((c) => c.id === preferredId);
+    setSelectedChannelId((preferred || textChannels[0]).id);
+  }, []);
+
   const handleViewChange = useCallback((nextView) => {
     if (nextView === "dms") {
       const preferred = lastViewedDmIdRef.current;
@@ -515,9 +528,19 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
       } else if (dmList.length) {
         setSelectedChannelId(dmList[0].id);
       }
+    } else if (nextView === "servers") {
+      const serverId = selectedServerIdRef.current || servers[0]?.id;
+      if (serverId) {
+        if (!selectedServerIdRef.current) setSelectedServerId(serverId);
+        const activeList = channelsBelongToServerRef.current === serverId
+          ? channels
+          : (channelsByServerRef.current[serverId] || []);
+        selectServerTextChannel(serverId, activeList);
+        loadChannels(serverId);
+      }
     }
     setView(nextView);
-  }, [dmList]);
+  }, [dmList, servers, channels, loadChannels, selectServerTextChannel]);
 
   useEffect(() => {
     if (view !== "dms") return;
@@ -555,7 +578,15 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           selectedServerId={selectedServerId}
           onSelectServer={(id) => {
             setSelectedServerId(id);
-            if (id) setUnreadByServer((s) => ({ ...s, [id]: 0 }));
+            setView("servers");
+            if (id) {
+              setUnreadByServer((s) => ({ ...s, [id]: 0 }));
+              const cachedList = channelsBelongToServerRef.current === id
+                ? channels
+                : (channelsByServerRef.current[id] || []);
+              selectServerTextChannel(id, cachedList);
+              loadChannels(id);
+            }
           }}
           unread={unread}
           unreadByServer={unreadByServer}

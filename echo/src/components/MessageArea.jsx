@@ -271,6 +271,7 @@ export default function MessageArea({
   const [gifSearching, setGifSearching] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [initialScrollReady, setInitialScrollReady] = useState(true);
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStartOffset, setMentionStartOffset] = useState(0);
@@ -291,8 +292,10 @@ export default function MessageArea({
   const messageCacheRef = useRef(new Map());
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
+  const pendingInitialScrollRef = useRef(false);
   const scrollAtBottomRef = useRef(scrollAtBottom);
   scrollAtBottomRef.current = scrollAtBottom;
+  const scrollSettledTimerRef = useRef(null);
 
   const currentUserId = user?.id;
   const onMessageReceivedRef = useRef(onMessageReceived);
@@ -389,6 +392,8 @@ export default function MessageArea({
 
   useEffect(() => {
     if (channelId) {
+      pendingInitialScrollRef.current = true;
+      setInitialScrollReady(false);
       const cached = messageCacheRef.current.get(channelId);
       if (cached) {
         setMessages(cached);
@@ -398,6 +403,8 @@ export default function MessageArea({
       onMentionClear?.();
       loadMessages(null, { silent: !!cached });
     } else {
+      pendingInitialScrollRef.current = false;
+      setInitialScrollReady(true);
       setMessages([]);
       setLoading(false);
     }
@@ -405,10 +412,31 @@ export default function MessageArea({
   }, [channelId, loadMessages]);
 
   useLayoutEffect(() => {
-    if (!channelId || loading) return;
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [channelId, loading]);
+    if (!channelId || loading || !pendingInitialScrollRef.current) return;
+    const scrollToBottom = (behavior = "auto") => {
+      const el = listRef.current;
+      if (!el) return;
+      if (behavior === "smooth") {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    scrollToBottom();
+    // Keep pinning for one extra frame + short delay so long items/images settle.
+    requestAnimationFrame(() => scrollToBottom());
+    if (scrollSettledTimerRef.current) clearTimeout(scrollSettledTimerRef.current);
+    scrollSettledTimerRef.current = setTimeout(() => {
+      scrollToBottom();
+      pendingInitialScrollRef.current = false;
+      setInitialScrollReady(true);
+      scrollSettledTimerRef.current = null;
+    }, 90);
+  }, [channelId, loading, messages.length]);
+
+  useEffect(() => () => {
+    if (scrollSettledTimerRef.current) clearTimeout(scrollSettledTimerRef.current);
+  }, []);
 
   useEffect(() => {
     ws.setCallbacks({
@@ -431,7 +459,10 @@ export default function MessageArea({
         onMessageReceivedRef.current?.(data);
         onActivityRef.current?.();
         if (scrollAtBottomRef.current && listRef.current) {
-          requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+          requestAnimationFrame(() => {
+            const el = listRef.current;
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          });
         }
         const mentioned = getMentionedUsernames(data.content);
         const myName = (user?.username || user?.display_name || "").toLowerCase();
@@ -511,7 +542,10 @@ export default function MessageArea({
       pendingAttachments.forEach((a) => a.previewUrl && a.previewUrl.startsWith("blob:") && URL.revokeObjectURL(a.previewUrl));
       ws.sendMessage(content, attachments || []);
       if (scrollAtBottom && listRef.current) {
-        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+        requestAnimationFrame(() => {
+          const el = listRef.current;
+          if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        });
       }
     };
 
@@ -593,7 +627,10 @@ export default function MessageArea({
       setGifResults({ data: [], pagination: {} });
       ws.sendMessage(content, [att]);
       if (scrollAtBottom && listRef.current) {
-        requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+        requestAnimationFrame(() => {
+          const el = listRef.current;
+          if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        });
       }
     },
     [channelId, currentUserId, user, input, ws, scrollAtBottom]
@@ -713,7 +750,7 @@ export default function MessageArea({
       )}
       <div
         ref={listRef}
-        className={styles.messageList}
+        className={`${styles.messageList} ${initialScrollReady ? "" : styles.messageListPending}`}
         onScroll={handleScroll}
       >
         {loading && messages.length === 0 && <div className={styles.loading}>Loading...</div>}

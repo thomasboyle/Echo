@@ -33,6 +33,10 @@
   scrollbar-width: none;
 }
 
+.messageListPending {
+  visibility: hidden;
+}
+
 .messageList::-webkit-scrollbar {
   display: none;
 }
