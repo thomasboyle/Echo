@@ -83,6 +83,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   lastViewedDmIdRef.current = lastViewedDmId;
   const channelsBelongToServerRef = useRef(null);
   const channelsByServerRef = useRef({});
+  const channelsRequestVersionRef = useRef({});
   const membersByServerRef = useRef({});
   const membersRequestVersionRef = useRef({});
   const [dmList, setDmList] = useState([]);
@@ -187,9 +188,13 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
 
   const loadChannels = useCallback(async (serverId) => {
     if (!serverId || !api) return;
+    const nextVersion = (channelsRequestVersionRef.current[serverId] || 0) + 1;
+    channelsRequestVersionRef.current[serverId] = nextVersion;
     try {
       const list = await api.getChannels(serverId);
+      if (channelsRequestVersionRef.current[serverId] !== nextVersion) return;
       channelsByServerRef.current[serverId] = list;
+      if (selectedServerIdRef.current !== serverId || viewRef.current !== "servers") return;
       setChannels(list);
       channelsBelongToServerRef.current = serverId;
       const textChannels = list.filter((c) => c.type === "text");
@@ -255,17 +260,22 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
       if (cachedChannels) {
         setChannels(cachedChannels);
         channelsBelongToServerRef.current = selectedServerId;
+      } else {
+        channelsBelongToServerRef.current = selectedServerId;
+        setChannels((prev) => (prev.length ? [] : prev));
       }
       const cachedMembers = membersByServerRef.current[selectedServerId];
       if (cachedMembers) {
         setMembers(cachedMembers);
+      } else {
+        setMembers((prev) => (prev.length ? [] : prev));
       }
       loadChannels(selectedServerId);
       loadMembers(selectedServerId);
     } else {
       channelsBelongToServerRef.current = null;
-      setChannels([]);
-      setMembers([]);
+      setChannels((prev) => (prev.length ? [] : prev));
+      setMembers((prev) => (prev.length ? [] : prev));
     }
   }, [selectedServerId, loadChannels, loadMembers]);
 
@@ -585,7 +595,6 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
                 ? channels
                 : (channelsByServerRef.current[id] || []);
               selectServerTextChannel(id, cachedList);
-              loadChannels(id);
             }
           }}
           unread={unread}

@@ -398,7 +398,10 @@ export default function MessageArea({
       if (cached) {
         setMessages(cached);
         setLoading(false);
+      } else {
+        setMessages((prev) => (prev.length ? [] : prev));
       }
+      setTyping((prev) => (prev.length ? [] : prev));
       onUnreadClear?.();
       onMentionClear?.();
       loadMessages(null, { silent: !!cached });
