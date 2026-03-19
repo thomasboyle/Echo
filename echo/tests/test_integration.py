@@ -299,8 +299,10 @@ class TestSyncServersAndUsers(unittest.TestCase):
         self.assertEqual(len(members), 1)
         self.assertIn("online", members[0])
 
-    def test_online_status_reflects_voice_join_leave(self):
-        """Online status is True when user has active connection (e.g. in voice), False otherwise."""
+    def test_online_status_reflects_notifications_socket(self):
+        """Online status is True while the client notifications socket is connected."""
+        if not websockets:
+            self.skipTest("websockets package required")
         u_owner = f"on_own_{_unique()}"
         u_peer = f"on_peer_{_unique()}"
         _, r_owner = request("POST", "/register", body={"username": u_owner, "password": "password", "display_name": "Owner"})
@@ -312,26 +314,27 @@ class TestSyncServersAndUsers(unittest.TestCase):
         server_id = create["id"]
         _, invite = request("GET", f"/servers/{server_id}/invite", token=token_owner)
         request("POST", f"/servers/{server_id}/join", body={"invite_code": invite["invite_code"]}, token=token_peer)
-        _, channels = request("GET", f"/servers/{server_id}/channels", token=token_owner)
-        voice_ch = next(c for c in channels if c["type"] == "voice")
-        channel_id = voice_ch["id"]
 
         code, members_before = request("GET", f"/servers/{server_id}/members", token=token_owner)
         self.assertEqual(code, 200)
         peer_before = next(m for m in members_before if m["id"] == user_peer_id)
-        self.assertFalse(peer_before["online"], "Peer should be offline before joining voice")
+        self.assertFalse(peer_before["online"], "Peer should be offline before connecting notifications socket")
 
-        request("POST", f"/voice/{channel_id}/join", token=token_peer)
-        code, members_joined = request("GET", f"/servers/{server_id}/members", token=token_owner)
-        self.assertEqual(code, 200)
-        peer_joined = next(m for m in members_joined if m["id"] == user_peer_id)
-        self.assertTrue(peer_joined["online"], "Peer should be online while in voice")
+        ws_url = f"{ws_base()}/ws/notifications?token={urllib.parse.quote(token_peer)}"
+        async def _connect_once():
+            async with websockets.connect(ws_url, close_timeout=2):
+                await asyncio.sleep(0.25)
+                code_joined, members_joined = request("GET", f"/servers/{server_id}/members", token=token_owner)
+                self.assertEqual(code_joined, 200)
+                peer_joined = next(m for m in members_joined if m["id"] == user_peer_id)
+                self.assertTrue(peer_joined["online"], "Peer should be online while notifications socket is open")
+            await asyncio.sleep(0.25)
+        asyncio.run(_connect_once())
 
-        request("POST", f"/voice/{channel_id}/leave", token=token_peer)
         code, members_after = request("GET", f"/servers/{server_id}/members", token=token_owner)
         self.assertEqual(code, 200)
         peer_after = next(m for m in members_after if m["id"] == user_peer_id)
-        self.assertFalse(peer_after["online"], "Peer should be offline after leaving voice")
+        self.assertFalse(peer_after["online"], "Peer should be offline after notifications socket closes")
 
     def test_list_dms_and_open_dm(self):
         u1, u2 = f"dma_{_unique()}", f"dmb_{_unique()}"

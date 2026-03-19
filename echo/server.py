@@ -266,11 +266,8 @@ voice_rooms: dict[str, list[tuple[str, WebSocket]]] = {}
 
 def _online_user_ids() -> set[str]:
     out: set[str] = set()
-    for conns in channel_connections.values():
-        for uid, _ in conns:
-            out.add(uid)
-    for room in voice_rooms.values():
-        for uid, _ in room:
+    for uid, conns in notification_connections.items():
+        if conns:
             out.add(uid)
     return out
 
@@ -743,9 +740,6 @@ async def get_members(server_id: str, authorization: str | None = Header(default
         ) as cur:
             rows = await cur.fetchall()
         online_set = _online_user_ids()
-        async with db.execute("SELECT DISTINCT user_id FROM voice_sessions") as cur:
-            async for row in cur:
-                online_set.add(row[0])
     members = []
     for r in rows:
         members.append({

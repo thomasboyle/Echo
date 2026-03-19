@@ -249,6 +249,7 @@ export default function MessageArea({
   api,
   ws,
   mentionableUsers = [],
+  showChannelHeader = true,
   onOpenDM,
   onUnreadClear,
   onMentionClear,
@@ -287,6 +288,7 @@ export default function MessageArea({
   const [scrollAtBottom, setScrollAtBottom] = useState(true);
   const listRef = useRef(null);
   const bottomRef = useRef(null);
+  const messageCacheRef = useRef(new Map());
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
   const scrollAtBottomRef = useRef(scrollAtBottom);
@@ -356,24 +358,30 @@ export default function MessageArea({
   }, [input]);
 
   const loadMessages = useCallback(
-    async (before = null) => {
+    async (before = null, options = {}) => {
       if (!channelId || !api) return;
+      const requestedChannelId = channelId;
       if (before) setLoadingMore(true);
-      else setLoading(true);
+      else if (!options.silent) setLoading(true);
       try {
-        const list = await api.getMessages(channelId, 50, before);
+        const list = await api.getMessages(requestedChannelId, 50, before);
         if (before) {
+          if (requestedChannelId !== channelIdRef.current) return;
           setMessages((prev) => {
             const next = [...list, ...prev];
-            return next.length > MAX_MESSAGES ? next.slice(0, MAX_MESSAGES) : next;
+            const capped = next.length > MAX_MESSAGES ? next.slice(0, MAX_MESSAGES) : next;
+            messageCacheRef.current.set(requestedChannelId, capped);
+            return capped;
           });
         } else {
+          messageCacheRef.current.set(requestedChannelId, list);
+          if (requestedChannelId !== channelIdRef.current) return;
           setMessages(list);
         }
       } catch (_) {
       } finally {
         if (before) setLoadingMore(false);
-        else setLoading(false);
+        else if (requestedChannelId === channelIdRef.current) setLoading(false);
       }
     },
     [channelId, api]
@@ -381,11 +389,17 @@ export default function MessageArea({
 
   useEffect(() => {
     if (channelId) {
+      const cached = messageCacheRef.current.get(channelId);
+      if (cached) {
+        setMessages(cached);
+        setLoading(false);
+      }
       onUnreadClear?.();
       onMentionClear?.();
-      loadMessages();
+      loadMessages(null, { silent: !!cached });
     } else {
       setMessages([]);
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when channel or loadMessages changes; callbacks are unstable and would cause request loop
   }, [channelId, loadMessages]);
@@ -410,7 +424,9 @@ export default function MessageArea({
             (m) => !(m.optimistic && m.content === normalized.content && (m.author_id || m.author?.id) === currentUserId)
           );
           if (rest.some((m) => m.id === normalized.id)) return rest;
-          return [...rest, normalized];
+          const next = [...rest, normalized];
+          messageCacheRef.current.set(currentChannelId, next);
+          return next;
         });
         onMessageReceivedRef.current?.(data);
         onActivityRef.current?.();
@@ -485,7 +501,11 @@ export default function MessageArea({
         created_at: new Date().toISOString(),
         optimistic: true,
       };
-      setMessages((prev) => [...prev, optimistic]);
+      setMessages((prev) => {
+        const next = [...prev, optimistic];
+        messageCacheRef.current.set(channelIdRef.current, next);
+        return next;
+      });
       setInput("");
       setPendingAttachments([]);
       pendingAttachments.forEach((a) => a.previewUrl && a.previewUrl.startsWith("blob:") && URL.revokeObjectURL(a.previewUrl));
@@ -561,7 +581,11 @@ export default function MessageArea({
         created_at: new Date().toISOString(),
         optimistic: true,
       };
-      setMessages((prev) => [...prev, optimistic]);
+      setMessages((prev) => {
+        const next = [...prev, optimistic];
+        messageCacheRef.current.set(channelIdRef.current, next);
+        return next;
+      });
       setInput("");
       setPendingAttachments([]);
       setShowGifSearch(false);
@@ -666,7 +690,7 @@ export default function MessageArea({
     );
   }
 
-  const name = channel?.name || "channel";
+  const name = channel?.name || (showChannelHeader ? "channel" : "DM");
   const grouped = [];
   for (const m of messages) {
     const last = grouped[grouped.length - 1];
@@ -682,48 +706,46 @@ export default function MessageArea({
 
   return (
     <div className={styles.root}>
-      <div className={styles.channelHeader}>
-        <span className={styles.channelName}># {name}</span>
-      </div>
+      {showChannelHeader && (
+        <div className={styles.channelHeader}>
+          <span className={styles.channelName}># {name}</span>
+        </div>
+      )}
       <div
         ref={listRef}
         className={styles.messageList}
         onScroll={handleScroll}
       >
-        {loading && <div className={styles.loading}>Loading...</div>}
-        {!loading && (
-          <>
-            <button
-              type="button"
-              className={styles.loadMore}
-              onClick={() => messages.length && loadMessages(messages[0]?.id)}
-              disabled={loadingMore}
-            >
-              {loadingMore ? "Loading..." : "Load older messages"}
-            </button>
-            {grouped.map((group) => (
-              <MessageGroup
-                key={group[0].id}
-                messages={group}
-                currentUserId={currentUserId}
-                baseUrl={baseUrl}
-                onMentionClick={handleMentionClick}
-                onImageClick={(url) => {
-                  setLightboxImage(url);
-                  setLightboxZoomed(false);
-                  setLightboxZoomOrigin({ x: 50, y: 50 });
-                  setLightboxPan({ x: 0, y: 0 });
-                }}
-              />
-            ))}
-            {typing.length > 0 && (
-              <div className={styles.typing}>
-                {typing.map((t) => t.user?.display_name).filter(Boolean).join(", ")} typing...
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </>
+        {loading && messages.length === 0 && <div className={styles.loading}>Loading...</div>}
+        <button
+          type="button"
+          className={styles.loadMore}
+          onClick={() => messages.length && loadMessages(messages[0]?.id)}
+          disabled={loadingMore || loading}
+        >
+          {loadingMore ? "Loading..." : "Load older messages"}
+        </button>
+        {grouped.map((group) => (
+          <MessageGroup
+            key={group[0].id}
+            messages={group}
+            currentUserId={currentUserId}
+            baseUrl={baseUrl}
+            onMentionClick={handleMentionClick}
+            onImageClick={(url) => {
+              setLightboxImage(url);
+              setLightboxZoomed(false);
+              setLightboxZoomOrigin({ x: 50, y: 50 });
+              setLightboxPan({ x: 0, y: 0 });
+            }}
+          />
+        ))}
+        {typing.length > 0 && (
+          <div className={styles.typing}>
+            {typing.map((t) => t.user?.display_name).filter(Boolean).join(", ")} typing...
+          </div>
         )}
+        <div ref={bottomRef} />
       </div>
       {channel?.type !== "voice" && (
         <div className={styles.inputWrap}>

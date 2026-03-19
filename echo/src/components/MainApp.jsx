@@ -78,7 +78,13 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const [lastViewedChannelByServer, setLastViewedChannelByServer] = useState({});
   const lastViewedChannelByServerRef = useRef(lastViewedChannelByServer);
   lastViewedChannelByServerRef.current = lastViewedChannelByServer;
+  const [lastViewedDmId, setLastViewedDmId] = useState(null);
+  const lastViewedDmIdRef = useRef(lastViewedDmId);
+  lastViewedDmIdRef.current = lastViewedDmId;
   const channelsBelongToServerRef = useRef(null);
+  const channelsByServerRef = useRef({});
+  const membersByServerRef = useRef({});
+  const membersRequestVersionRef = useRef({});
   const [dmList, setDmList] = useState([]);
   const [view, setView] = useState("servers");
   const [unread, setUnread] = useState({});
@@ -89,8 +95,10 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   mentionByChannelRef.current = mentionByChannel;
   const selectedChannelIdRef = useRef(selectedChannelId);
   const selectedServerIdRef = useRef(selectedServerId);
+  const viewRef = useRef(view);
   selectedChannelIdRef.current = selectedChannelId;
   selectedServerIdRef.current = selectedServerId;
+  viewRef.current = view;
   const [modal, setModal] = useState(null);
   const [modalData, setModalData] = useState(null);
   const [cameraOn, setCameraOn] = useState(false);
@@ -181,6 +189,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     if (!serverId || !api) return;
     try {
       const list = await api.getChannels(serverId);
+      channelsByServerRef.current[serverId] = list;
       setChannels(list);
       channelsBelongToServerRef.current = serverId;
       const textChannels = list.filter((c) => c.type === "text");
@@ -188,18 +197,28 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
       if (firstText) {
         const preferredId = lastViewedChannelByServerRef.current[serverId];
         const preferred = list.find((c) => c.id === preferredId && c.type === "text");
-        setSelectedChannelId(preferred ? preferred.id : firstText.id);
+        const keepCurrent = list.some((c) => c.id === selectedChannelIdRef.current && c.type === "text");
+        if (!keepCurrent) {
+          setSelectedChannelId(preferred ? preferred.id : firstText.id);
+        }
       } else {
         setSelectedChannelId(null);
       }
     } catch (_) {}
   }, [api]);
 
-  const loadMembers = useCallback(async (serverId) => {
+  const loadMembers = useCallback(async (serverId, options = {}) => {
+    const { applyToUi = true } = options;
     if (!serverId || !api) return;
+    const nextVersion = (membersRequestVersionRef.current[serverId] || 0) + 1;
+    membersRequestVersionRef.current[serverId] = nextVersion;
     try {
       const list = await api.getMembers(serverId);
-      setMembers(list);
+      if (membersRequestVersionRef.current[serverId] !== nextVersion) return;
+      membersByServerRef.current[serverId] = list;
+      if (applyToUi && selectedServerIdRef.current === serverId && viewRef.current === "servers") {
+        setMembers(list);
+      }
     } catch (_) {}
   }, [api]);
 
@@ -232,6 +251,15 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
 
   useEffect(() => {
     if (selectedServerId) {
+      const cachedChannels = channelsByServerRef.current[selectedServerId];
+      if (cachedChannels) {
+        setChannels(cachedChannels);
+        channelsBelongToServerRef.current = selectedServerId;
+      }
+      const cachedMembers = membersByServerRef.current[selectedServerId];
+      if (cachedMembers) {
+        setMembers(cachedMembers);
+      }
       loadChannels(selectedServerId);
       loadMembers(selectedServerId);
     } else {
@@ -242,20 +270,16 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   }, [selectedServerId, loadChannels, loadMembers]);
 
   useEffect(() => {
-    if (selectedServerId && ws.connected && channels.some((c) => c.id === selectedChannelId)) {
-      loadMembers(selectedServerId);
-    }
-  }, [ws.connected, selectedServerId, selectedChannelId, channels, loadMembers]);
-
-  useEffect(() => {
     if (view !== "servers" || !selectedServerId || !api) return;
     const poll = () => {
-      api.getMembers(selectedServerId).then(setMembers).catch(() => {});
+      loadMembers(selectedServerId);
     };
-    poll();
+    if (!membersByServerRef.current[selectedServerId]) {
+      poll();
+    }
     const id = setInterval(poll, 5000);
     return () => clearInterval(id);
-  }, [view, selectedServerId, api]);
+  }, [view, selectedServerId, api, loadMembers]);
 
   useEffect(() => {
     if (view === "servers" && selectedServerId && selectedChannelId && channelsBelongToServerRef.current === selectedServerId) {
@@ -311,9 +335,6 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     }
     refreshInFlightRef.current = true;
     const tasks = [loadServers(), loadDMs()];
-    if (view === "servers" && selectedServerId) {
-      tasks.push(loadChannels(selectedServerId), loadMembers(selectedServerId), refreshVoiceActive());
-    }
     Promise.allSettled(tasks).finally(() => {
       refreshInFlightRef.current = false;
       if (refreshPendingRef.current) {
@@ -321,7 +342,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
         setTimeout(refreshUiState, 0);
       }
     });
-  }, [view, selectedServerId, loadServers, loadDMs, loadChannels, loadMembers, refreshVoiceActive]);
+  }, [loadServers, loadDMs]);
 
   useEffect(() => {
     if (view !== "servers" || !selectedServerId || !api) return;
@@ -481,6 +502,33 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     }
   }, []);
 
+  const handleSelectChannel = useCallback((id) => {
+    setSelectedChannelId(id);
+    if (view === "dms") setLastViewedDmId(id);
+  }, [view]);
+
+  const handleViewChange = useCallback((nextView) => {
+    if (nextView === "dms") {
+      const preferred = lastViewedDmIdRef.current;
+      if (preferred && dmList.some((d) => d.id === preferred)) {
+        setSelectedChannelId(preferred);
+      } else if (dmList.length) {
+        setSelectedChannelId(dmList[0].id);
+      }
+    }
+    setView(nextView);
+  }, [dmList]);
+
+  useEffect(() => {
+    if (view !== "dms") return;
+    if (selectedChannelId && dmList.some((d) => d.id === selectedChannelId)) {
+      setLastViewedDmId(selectedChannelId);
+      return;
+    }
+    const preferred = lastViewedDmIdRef.current || dmList[0]?.id;
+    if (preferred) setSelectedChannelId(preferred);
+  }, [view, selectedChannelId, dmList]);
+
   return (
     <div className={styles.layout}>
       <header className={styles.titlebar} data-tauri-drag-region>
@@ -514,7 +562,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           mentionByServer={mentionByServer}
           totalDmUnread={dmList.reduce((sum, d) => sum + (unread[d.id] || 0) + (mentionByChannel[d.id] || 0), 0)}
           view={view}
-          onViewChange={setView}
+          onViewChange={handleViewChange}
           onOpenModal={setModal}
           onModalData={setModalData}
           onServersChange={loadServers}
@@ -528,7 +576,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           channels={channels}
           selectedChannelId={selectedChannelId}
           selectedServerId={selectedServerId}
-          onSelectChannel={setSelectedChannelId}
+          onSelectChannel={handleSelectChannel}
           dmList={dmList}
           user={user}
           members={members}
@@ -541,6 +589,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           onChannelUpdated={(ch) => ch?.id && setChannels((prev) => prev.map((c) => (c.id === ch.id ? { ...c, ...ch } : c)))}
           onDmSelect={(dmId) => {
             setView("dms");
+            setLastViewedDmId(dmId);
             setSelectedChannelId(dmId);
           }}
           webrtc={webrtc}
@@ -646,6 +695,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           api={api}
           ws={ws}
           mentionableUsers={mentionableUsers}
+          showChannelHeader={view !== "dms"}
           onOpenDM={async (userId) => {
             if (!api) return;
             const ch = await api.openDM(userId);
@@ -654,6 +704,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
               if (prev.some((d) => d.other_user?.id === userId)) return prev;
               return [{ id: ch.id, other_user: other || { id: userId, display_name: "User" } }, ...prev];
             });
+            setLastViewedDmId(ch.id);
             setSelectedChannelId(ch.id);
             setView("dms");
           }}
@@ -750,6 +801,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
               if (prev.some((d) => d.other_user?.id === userId)) return prev;
               return [{ id: ch.id, other_user: other || { id: userId, display_name: "User" } }, ...prev];
             });
+            setLastViewedDmId(ch.id);
             setSelectedChannelId(ch.id);
             setView("dms");
           }}
@@ -782,6 +834,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
         onProfileSaved={onProfileSaved}
         onDmCreated={loadDMs}
         onOpenDMChannel={(channelId) => {
+          setLastViewedDmId(channelId);
           setSelectedChannelId(channelId);
           setView("dms");
           loadDMs();

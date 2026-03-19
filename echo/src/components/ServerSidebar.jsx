@@ -30,7 +30,7 @@ export default function ServerSidebar({
         onClick={() => onViewChange("dms")}
         title="Direct Messages"
       >
-        <span className={styles.homeIcon}>H</span>
+        <span className={styles.homeIcon}>DM</span>
         {formatBadgeCount(totalDmUnread) && (
           <span className={styles.unreadBadge} aria-label={`${totalDmUnread} unread`}>{formatBadgeCount(totalDmUnread)}</span>
         )}
