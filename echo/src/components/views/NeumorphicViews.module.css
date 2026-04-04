@@ -48,7 +48,7 @@
   font-size: 28px;
   font-weight: 700;
   color: var(--text-primary);
-  text-shadow: 2px 2px 4px var(--neu-shadow-dark);
+  text-shadow: 1px 1px 2px var(--neu-shadow-dark);
 }
 
 .actions {
@@ -66,7 +66,7 @@
 }
 
 .neuBtn:active {
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
 }
 
 .serverGrid {
@@ -100,7 +100,7 @@
 
 .serverCard:active {
   transform: translateY(0);
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
 }
 
 .serverIcon {
@@ -113,7 +113,7 @@
   justify-content: center;
   background: linear-gradient(145deg, #25272b, #2c2e32);
   border-radius: var(--radius-full);
-  box-shadow: 4px 4px 8px var(--neu-shadow-dark), -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: 2px 2px 4px var(--neu-shadow-dark);
 }
 
 .badge {
@@ -188,7 +188,7 @@
 }
 
 .channelItem:active {
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
 }
 
 .channelIcon {
@@ -239,7 +239,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-shadow: 2px 2px 4px var(--neu-shadow-dark);
+  text-shadow: 1px 1px 2px var(--neu-shadow-dark);
 }
 
 .serverTitleChevron {
@@ -299,7 +299,7 @@
   background: var(--neu-bg);
   padding: 32px;
   border-radius: var(--radius-md);
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
   margin-bottom: 24px;
 }
 

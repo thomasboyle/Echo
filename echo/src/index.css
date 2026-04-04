@@ -8,7 +8,6 @@
   /* Neumorphism Variables */
   --neu-bg: #2d2f33;
   --neu-shadow-dark: #212326;
-  --neu-shadow-light: #393b40;
   
   --accent: #5865f2;
   --accent-neu: #4752c4;
@@ -48,8 +47,7 @@ body {
 /* Neumorphic Utilities */
 .neu-flat {
   background: var(--neu-bg);
-  box-shadow: 6px 6px 14px var(--neu-shadow-dark),
-             -6px -6px 14px var(--neu-shadow-light);
+  box-shadow: 3px 3px 6px var(--neu-shadow-dark);
   border-radius: var(--radius-md);
   border: none;
   transform: translateZ(0); /* Hardware acceleration */
@@ -57,8 +55,7 @@ body {
 
 .neu-concave {
   background: linear-gradient(145deg, #282a2e, #303237);
-  box-shadow: 6px 6px 14px var(--neu-shadow-dark),
-             -6px -6px 14px var(--neu-shadow-light);
+  box-shadow: 3px 3px 6px var(--neu-shadow-dark);
   border-radius: var(--radius-md);
   border: none;
   transform: translateZ(0);
@@ -66,8 +63,7 @@ body {
 
 .neu-convex {
   background: linear-gradient(145deg, #303237, #282a2e);
-  box-shadow: 6px 6px 14px var(--neu-shadow-dark),
-             -6px -6px 14px var(--neu-shadow-light);
+  box-shadow: 3px 3px 6px var(--neu-shadow-dark);
   border-radius: var(--radius-md);
   border: none;
   transform: translateZ(0);
@@ -75,8 +71,7 @@ body {
 
 .neu-pressed {
   background: var(--neu-bg);
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark),
-              inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
   border-radius: var(--radius-md);
   border: none;
   transform: translateZ(0);

@@ -271,8 +271,7 @@
   cursor: pointer;
   border: 2px solid transparent;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark),
-              inset -4px -4px 8px var(--neu-shadow-light);
+  box-shadow: inset 2px 2px 4px var(--neu-shadow-dark);
 }
 
 .videoSlot:hover {
