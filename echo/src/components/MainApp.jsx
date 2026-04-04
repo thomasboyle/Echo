@@ -248,6 +248,15 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   
   const notificationCallbackRef = useRef(null);
   notificationCallbackRef.current = (data) => {
+    if (data?.type === "voice_presence") {
+      if (
+        data.server_id === selectedServerIdRef.current &&
+        viewRef.current === "servers"
+      ) {
+        refreshVoiceActive();
+      }
+      return;
+    }
     const cid = data.channel_id;
     const sid = data.server_id;
     if (cid === selectedChannelIdRef.current) return;
@@ -474,8 +483,6 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   useEffect(() => {
     if (view !== "servers" || !selectedServerId || !api) return;
     refreshVoiceActive();
-    const id = setInterval(refreshVoiceActive, 2500);
-    return () => clearInterval(id);
   }, [view, selectedServerId, api, refreshVoiceActive]);
 
   useEffect(() => {
@@ -1019,6 +1026,9 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
            serverId={selectedServerId}
            onOpenModal={setModal}
            onServerModal={openServerModal}
+           activeVoiceUsers={activeVoiceUsers}
+           currentVoiceChannelId={webrtc.currentChannelId}
+           onRefreshVoiceActive={refreshVoiceActive}
         />
       );
     }

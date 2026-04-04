@@ -320,3 +320,56 @@
 .settingRow:last-child {
   border-bottom: none;
 }
+
+.voiceChannelUsers {
+  padding: 2px 0 8px 8px;
+  margin: 0 0 8px 12px;
+  border-left: 2px solid var(--neu-shadow-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voiceChannelUser {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 0;
+  border-radius: var(--radius-sm);
+}
+
+.voiceChannelUserAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: var(--bg-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  box-shadow: 2px 2px 4px var(--neu-shadow-dark);
+}
+
+.voiceChannelUserName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.voiceChannelUserPending {
+  opacity: 0.75;
+}
+
+.voiceChannelFull {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--red);
+  font-weight: 600;
+}

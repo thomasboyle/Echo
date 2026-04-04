@@ -25,10 +25,20 @@ export default function ServerSplitView({
   serverName, channels, unread, mentionByChannel, onSelectChannel,
   selectedChannelId, currentChannel, user, baseUrl, token, api, ws, mentionableUsers,
   onOpenDM, onUnreadClear, onMentionClear, onMessageReceived, onMentionReceived, onMembersRefresh, onActivity, onCall,
-  members, serverId, onOpenModal, onServerModal
+  members, serverId, onOpenModal, onServerModal,
+  activeVoiceUsers = {},
+  currentVoiceChannelId = null,
+  onRefreshVoiceActive,
 }) {
   const [serverTitleMenuOpen, setServerTitleMenuOpen] = useState(false);
+  const [optimisticVoiceChannelId, setOptimisticVoiceChannelId] = useState(null);
   const serverTitleMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (currentVoiceChannelId && optimisticVoiceChannelId === currentVoiceChannelId) {
+      setOptimisticVoiceChannelId(null);
+    }
+  }, [currentVoiceChannelId, optimisticVoiceChannelId]);
 
   useEffect(() => {
     if (!serverTitleMenuOpen) return;
@@ -115,22 +125,94 @@ export default function ServerSplitView({
           {voiceChannels.length > 0 && (
             <div style={{ marginTop: '24px' }}>
               <h3 style={{ marginBottom: '8px', color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase', paddingLeft: '8px' }}>Voice Channels</h3>
-              {voiceChannels.map(c => {
+              {voiceChannels.map((c) => {
+                const channelUsers = activeVoiceUsers[c.id] || [];
+                const hasCurrentUser = !!user?.id && channelUsers.some((u) => u.id === user.id);
+                const isOptimisticJoin = optimisticVoiceChannelId === c.id;
+                const shouldRenderCurrentUser =
+                  !!user?.id && (isOptimisticJoin || (currentVoiceChannelId === c.id && !hasCurrentUser));
+                const renderedVoiceUsersSource = shouldRenderCurrentUser
+                  ? [
+                      {
+                        id: user.id,
+                        display_name: user.display_name || "You",
+                        avatar_emoji: user.avatar_emoji || "🐱",
+                        __optimistic: isOptimisticJoin,
+                      },
+                      ...channelUsers,
+                    ]
+                  : channelUsers;
+                const seenVoiceUserIds = new Set();
+                const renderedVoiceUsers = renderedVoiceUsersSource.filter((voiceUser) => {
+                  const voiceUserId = voiceUser?.id;
+                  if (!voiceUserId || seenVoiceUserIds.has(voiceUserId)) return false;
+                  seenVoiceUserIds.add(voiceUserId);
+                  return true;
+                });
+                const inVoice = currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id;
                 const isSelected = selectedChannelId === c.id;
+                const rowActive = inVoice || isSelected;
                 return (
-                  <button 
-                    key={c.id} 
-                    className={`${styles.channelItem} ${isSelected ? 'neu-pressed' : 'neu-flat'}`}
-                    onClick={() => {
+                  <React.Fragment key={c.id}>
+                    <button
+                      type="button"
+                      className={`${styles.channelItem} ${rowActive ? "neu-pressed" : "neu-flat"}`}
+                      onClick={async () => {
                         onSelectChannel(c.id);
-                        if (onCall) onCall(c.id); // Automatically join voice
-                    }}
-                    style={{ padding: '10px 14px', minHeight: '44px', marginBottom: '8px', width: '100%' }}
-                  >
-                    <span className={styles.channelIcon} style={{ marginRight: '12px', color: isSelected ? '#23a559' : 'var(--text-muted)' }}><MicIcon /></span>
-                    <span className={styles.channelName} style={{ fontSize: '14px', flex: 1, textAlign: 'left', color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{c.name}</span>
-                  </button>
-                )
+                        if (currentVoiceChannelId === c.id || optimisticVoiceChannelId === c.id) return;
+                        setOptimisticVoiceChannelId(c.id);
+                        try {
+                          await onCall?.(c.id);
+                          onRefreshVoiceActive?.();
+                        } catch (_) {}
+                        finally {
+                          setOptimisticVoiceChannelId((prev) => (prev === c.id ? null : prev));
+                        }
+                      }}
+                      style={{ padding: "10px 14px", minHeight: "44px", marginBottom: "4px", width: "100%" }}
+                    >
+                      <span
+                        className={styles.channelIcon}
+                        style={{
+                          marginRight: "12px",
+                          color: inVoice ? "#23a559" : isSelected ? "var(--text-primary)" : "var(--text-muted)",
+                        }}
+                      >
+                        <MicIcon />
+                      </span>
+                      <span
+                        className={styles.channelName}
+                        style={{
+                          fontSize: "14px",
+                          flex: 1,
+                          textAlign: "left",
+                          color: rowActive ? "var(--text-primary)" : "var(--text-secondary)",
+                        }}
+                      >
+                        {c.name}
+                      </span>
+                      {c.voice_user_limit != null && c.voice_user_limit >= 1 && channelUsers.length >= c.voice_user_limit && (
+                        <span className={styles.voiceChannelFull}>Full</span>
+                      )}
+                    </button>
+                    {renderedVoiceUsers.length > 0 && (
+                      <div className={styles.voiceChannelUsers}>
+                        {renderedVoiceUsers.map((u) => (
+                          <div key={u.id} className={styles.voiceChannelUser}>
+                            <span className={styles.voiceChannelUserAvatar} aria-hidden>
+                              {u.avatar_emoji || "🐱"}
+                            </span>
+                            <span
+                              className={`${styles.voiceChannelUserName} ${u.__optimistic ? styles.voiceChannelUserPending : ""}`}
+                            >
+                              {u.display_name || "User"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
               })}
             </div>
           )}

@@ -410,6 +410,30 @@ async def get_channel_member_ids(db: aiosqlite.Connection, ch: dict, channel_id:
     return list(row) if row else []
 
 
+async def broadcast_voice_presence_for_server(server_id: str | None) -> None:
+    if not server_id:
+        return
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id FROM server_members WHERE server_id = ?", (server_id,)
+        ) as cur:
+            member_ids = [r[0] for r in await cur.fetchall()]
+    payload = {"type": "voice_presence", "server_id": server_id}
+    for uid in member_ids:
+        for ws in notification_connections.get(uid, []):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
+
+async def broadcast_voice_presence_for_channel(channel_id: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        ch = await get_channel_row(db, channel_id)
+        server_id = ch.get("server_id") if ch else None
+    await broadcast_voice_presence_for_server(server_id)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -926,6 +950,7 @@ async def delete_channel(
         await db.execute("DELETE FROM messages WHERE channel_id = ?", (channel_id,))
         await db.execute("DELETE FROM channels WHERE id = ? AND server_id = ?", (channel_id, server_id))
         await db.commit()
+    await broadcast_voice_presence_for_server(server_id)
     return {"ok": True}
 
 
@@ -1132,6 +1157,7 @@ async def voice_join(channel_id: str, authorization: str | None = Header(default
             (channel_id, user_id, created, 0, 0),
         )
         await db.commit()
+    await broadcast_voice_presence_for_channel(channel_id)
     return {"ok": True}
 
 
@@ -1144,6 +1170,7 @@ async def voice_leave(channel_id: str, authorization: str | None = Header(defaul
             (channel_id, user_id),
         )
         await db.commit()
+    await broadcast_voice_presence_for_channel(channel_id)
     return {"ok": True}
 
 
@@ -1176,6 +1203,7 @@ async def voice_disconnect(channel_id: str, body: VoiceDisconnectBody, authoriza
             (channel_id, target_id),
         )
         await db.commit()
+    await broadcast_voice_presence_for_channel(channel_id)
     others_before = list(voice_rooms.get(channel_id, []))
     if channel_id in voice_rooms:
         voice_rooms[channel_id] = [(u, w) for u, w in voice_rooms[channel_id] if u != target_id]
@@ -1239,6 +1267,7 @@ async def voice_mute(channel_id: str, body: VoiceModerationBody, authorization: 
             (1 if body.enabled else 0, channel_id, body.user_id),
         )
         await db.commit()
+    await broadcast_voice_presence_for_channel(channel_id)
     return {"ok": True}
 
 
@@ -1258,6 +1287,7 @@ async def voice_deafen(channel_id: str, body: VoiceModerationBody, authorization
             (1 if body.enabled else 0, channel_id, body.user_id),
         )
         await db.commit()
+    await broadcast_voice_presence_for_channel(channel_id)
     return {"ok": True}
 
 
@@ -1291,6 +1321,7 @@ async def voice_state(channel_id: str, body: VoiceStateBody, authorization: str 
                 params,
             )
             await db.commit()
+            await broadcast_voice_presence_for_channel(channel_id)
     return {"ok": True}
 
 
@@ -1579,6 +1610,7 @@ async def voice_signal_websocket(websocket: WebSocket, channel_id: str, token: s
                 await db.commit()
         except Exception:
             pass
+        await broadcast_voice_presence_for_channel(channel_id)
         for uid, ws in voice_rooms.get(channel_id, []):
             try:
                 await ws.send_json({"type": "peer_left", "user_id": user_id})

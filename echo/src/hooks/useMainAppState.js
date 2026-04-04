@@ -465,8 +465,6 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   useEffect(() => {
     if (view !== "servers" || !selectedServerId || !api) return;
     refreshVoiceActive();
-    const id = setInterval(refreshVoiceActive, 2500);
-    return () => clearInterval(id);
   }, [view, selectedServerId, api, refreshVoiceActive]);
 
   useEffect(() => {

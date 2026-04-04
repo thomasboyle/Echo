@@ -153,7 +153,12 @@ export function useNotificationsWebSocket(baseUrl, token, onMessageRef) {
       ws.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
-          if (data.type === "message" && onMessageRef?.current) onMessageRef.current(data);
+          if (
+            (data.type === "message" || data.type === "voice_presence") &&
+            onMessageRef?.current
+          ) {
+            onMessageRef.current(data);
+          }
         } catch (_) {}
       };
     };
