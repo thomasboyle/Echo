@@ -171,7 +171,7 @@ function ImageLightbox({
   );
 }
 
-function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick, onImageClick }) {
+const MessageGroup = React.memo(function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick, onImageClick }) {
   const first = messages[0];
   const author = first?.author || {};
   const handleMentionClick = (mentionText) => {
@@ -238,7 +238,7 @@ function MessageGroup({ messages, currentUserId, baseUrl, onMentionClick, onImag
       </div>
     </div>
   );
-}
+});
 
 export default function MessageArea({
   channel,
@@ -296,6 +296,10 @@ export default function MessageArea({
   const scrollAtBottomRef = useRef(scrollAtBottom);
   scrollAtBottomRef.current = scrollAtBottom;
   const scrollSettledTimerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const typingExpiryTimersRef = useRef(new Map());
+  const pendingAttachmentsRef = useRef(pendingAttachments);
+  pendingAttachmentsRef.current = pendingAttachments;
 
   const currentUserId = user?.id;
   const onMessageReceivedRef = useRef(onMessageReceived);
@@ -439,6 +443,17 @@ export default function MessageArea({
 
   useEffect(() => () => {
     if (scrollSettledTimerRef.current) clearTimeout(scrollSettledTimerRef.current);
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (attachMenuCloseTimeoutRef.current) {
+      clearTimeout(attachMenuCloseTimeoutRef.current);
+      attachMenuCloseTimeoutRef.current = null;
+    }
+    const typingTimers = typingExpiryTimersRef.current;
+    typingTimers.forEach((timeoutId) => clearTimeout(timeoutId));
+    typingTimers.clear();
+    pendingAttachmentsRef.current.forEach((a) => {
+      if (a?.previewUrl && a.previewUrl.startsWith("blob:")) URL.revokeObjectURL(a.previewUrl);
+    });
   }, []);
 
   useEffect(() => {
@@ -476,12 +491,21 @@ export default function MessageArea({
         }
       },
       onTyping: (data) => {
+        const userId = data.user?.id;
+        if (userId) {
+          const prevTypingTimeout = typingExpiryTimersRef.current.get(userId);
+          if (prevTypingTimeout) clearTimeout(prevTypingTimeout);
+          const nextTypingTimeout = setTimeout(() => {
+            typingExpiryTimersRef.current.delete(userId);
+            setTyping((t) => t.filter((x) => x.user?.id !== userId));
+          }, 5000);
+          typingExpiryTimersRef.current.set(userId, nextTypingTimeout);
+        }
         setTyping((t) => {
-          const next = t.filter((x) => x.user?.id !== data.user?.id);
-          if (data.user?.id && data.user.id !== currentUserId) next.push({ user: data.user });
+          const next = t.filter((x) => x.user?.id !== userId);
+          if (userId && userId !== currentUserId) next.push({ user: data.user });
           return next;
         });
-        setTimeout(() => setTyping((t) => t.filter((x) => x.user?.id !== data.user?.id)), 5000);
       },
       onUserJoin: () => {
         onMembersRefreshRef.current?.();
@@ -715,7 +739,6 @@ export default function MessageArea({
     }
   };
 
-  const typingTimeoutRef = useRef(null);
   const sendTyping = () => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     ws.sendTyping();
