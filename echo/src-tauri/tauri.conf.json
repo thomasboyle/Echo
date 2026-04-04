@@ -31,7 +31,10 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
   },
   "plugins": {
     "updater": {

@@ -44,9 +44,19 @@ function makeJson() {
   };
 }
 
+function isLikelyNetworkFetchFailure(err) {
+  if (!(err instanceof TypeError)) return false;
+  const msg = (err.message || "").toLowerCase();
+  return (
+    msg === "failed to fetch" ||
+    msg === "load failed" ||
+    msg.includes("networkerror when attempting to fetch resource")
+  );
+}
+
 function fetchWithCatch(url, opts = {}) {
   return fetch(url, { ...opts }).catch((err) => {
-    if (err instanceof TypeError && err.message === "Failed to fetch") {
+    if (isLikelyNetworkFetchFailure(err)) {
       return Promise.reject(new Error("Cannot reach server. Check address, network, and CORS."));
     }
     return Promise.reject(err);
