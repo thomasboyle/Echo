@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { List } from "react-window";
 import styles from "./MembersSidebar.module.css";
 
@@ -45,7 +45,8 @@ export default React.memo(function MembersSidebar({ members, serverId, onOpenDM,
   const getItemSize = useCallback((index) => (rows[index]?.kind === "section" ? SECTION_ROW_HEIGHT : MEMBER_ROW_HEIGHT), [rows]);
   const rowProps = useMemo(() => ({ rows, onOpenDM }), [rows, onOpenDM]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!serverId) return;
     const el = listContainerRef.current;
     if (!el) return;
     const updateHeight = () => {
@@ -62,7 +63,7 @@ export default React.memo(function MembersSidebar({ members, serverId, onOpenDM,
       window.addEventListener("resize", updateHeight);
       return () => window.removeEventListener("resize", updateHeight);
     }
-  }, []);
+  }, [serverId]);
 
   if (!serverId) return null;
 
