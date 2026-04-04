@@ -322,7 +322,8 @@ class JoinServerBody(BaseModel):
 
 
 class UpdateServerBody(BaseModel):
-    name: str
+    name: str | None = None
+    icon_emoji: str | None = None
 
 
 class CreateChannelBody(BaseModel):
@@ -717,9 +718,19 @@ async def update_server(server_id: str, body: UpdateServerBody, authorization: s
         if not row:
             raise HTTPException(status_code=404, detail="Server not found")
         if row[0] != user_id:
-            raise HTTPException(status_code=403, detail="Only the server owner can rename it")
-        name = (body.name or "").strip() or "Server"
-        await db.execute("UPDATE servers SET name = ? WHERE id = ?", (name, server_id))
+            raise HTTPException(status_code=403, detail="Only the server owner can update it")
+        sets: list[str] = []
+        vals: list[str] = []
+        if body.name is not None:
+            sets.append("name = ?")
+            vals.append((body.name or "").strip() or "Server")
+        if body.icon_emoji is not None:
+            sets.append("icon_emoji = ?")
+            vals.append((body.icon_emoji or "").strip() or "🌐")
+        if not sets:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        vals.append(server_id)
+        await db.execute(f"UPDATE servers SET {', '.join(sets)} WHERE id = ?", vals)
         await db.commit()
     return {"ok": True}
 

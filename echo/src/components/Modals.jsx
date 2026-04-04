@@ -31,6 +31,7 @@ export default function Modals({
   const [createChannelType, setCreateChannelType] = useState("text");
   const [renameChannelName, setRenameChannelName] = useState("");
   const [renameServerName, setRenameServerName] = useState("");
+  const [changeServerIconEmoji, setChangeServerIconEmoji] = useState("🌐");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,10 @@ export default function Modals({
   useEffect(() => {
     if (modal === "createChannel" && data.type) setCreateChannelType(data.type);
     if (modal === "renameChannel" && data.channel) setRenameChannelName(data.channel.name || "");
-    if (modal === "renameServer" && data.serverName != null) setRenameServerName(data.serverName || "");
+    if ((modal === "renameServer" || modal === "serverSettings") && data.serverName != null) {
+      setRenameServerName(data.serverName || "");
+    }
+    if (modal === "changeServerIcon") setChangeServerIconEmoji(data.icon_emoji || "🌐");
     if (!modal) {
       setError("");
       setInviteCopied(false);
@@ -164,7 +168,7 @@ export default function Modals({
     }
     setLoading(true);
     try {
-      await api.updateServer(serverId, renameServerName.trim());
+      await api.updateServer(serverId, { name: renameServerName.trim() });
       setRenameServerName("");
       onServerRenamed?.();
       onClose();
@@ -207,6 +211,21 @@ export default function Modals({
       const ch = await api.openDM(userId);
       onDmCreated?.();
       onOpenDMChannel?.(ch.id);
+      onClose();
+    } catch (e) {
+      setError(e.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleChangeServerIcon = async () => {
+    if (!api || !serverId) return;
+    setError("");
+    setLoading(true);
+    try {
+      await api.updateServer(serverId, { icon_emoji: changeServerIconEmoji });
+      onServerRenamed?.();
       onClose();
     } catch (e) {
       setError(e.message || "Failed");
@@ -399,9 +418,9 @@ export default function Modals({
           </>
         )}
 
-        {modal === "renameServer" && (
+        {(modal === "renameServer" || modal === "serverSettings") && (
           <>
-            <h2 className={styles.title}>Rename Server</h2>
+            <h2 className={styles.title}>{modal === "serverSettings" ? "Server settings" : "Rename Server"}</h2>
             <input
               className={styles.input}
               placeholder="Server name"
@@ -410,7 +429,29 @@ export default function Modals({
             />
             {error && <div className={styles.error}>{error}</div>}
             <button className={styles.primary} onClick={handleRenameServer} disabled={loading}>
-              {loading ? "..." : "Rename"}
+              {loading ? "..." : modal === "serverSettings" ? "Save" : "Rename"}
+            </button>
+          </>
+        )}
+
+        {modal === "changeServerIcon" && (
+          <>
+            <h2 className={styles.title}>Change icon</h2>
+            <div className={styles.emojiGrid}>
+              {EMOJIS.map((e) => (
+                <button
+                  type="button"
+                  key={e}
+                  className={`${styles.emojiBtn} ${changeServerIconEmoji === e ? styles.emojiActive : ""}`}
+                  onClick={() => setChangeServerIconEmoji(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            {error && <div className={styles.error}>{error}</div>}
+            <button className={styles.primary} onClick={handleChangeServerIcon} disabled={loading}>
+              {loading ? "..." : "Save"}
             </button>
           </>
         )}

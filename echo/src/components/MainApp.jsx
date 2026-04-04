@@ -9,6 +9,12 @@ import MessageArea from "./MessageArea";
 import MembersSidebar from "./MembersSidebar";
 import VoiceBar from "./VoiceBar";
 import Modals from "./Modals";
+import NavigationBar from "./NavigationBar";
+import ServersView from "./views/ServersView";
+import ServerSplitView from "./views/ServerSplitView";
+import DMsSplitView from "./views/DMsSplitView";
+import ChatView from "./views/ChatView";
+import SettingsModal from "./SettingsModal";
 import { useWebSocket, useNotificationsWebSocket } from "../hooks/useWebSocket";
 import { useWebRTC } from "../hooks/useWebRTC";
 
@@ -126,6 +132,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   const isMountedRef = useRef(true);
   const pendingRefreshTimeoutRef = useRef(null);
   const refreshRetryTimeoutRef = useRef(null);
+  const explicitServerListRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -146,7 +153,9 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     try {
       const list = await api.getServers();
       setServers(list);
-      if (list.length && !selectedServerIdRef.current) setSelectedServerId(list[0].id);
+      if (list.length && !selectedServerIdRef.current && !explicitServerListRef.current) {
+        setSelectedServerId(list[0].id);
+      }
     } catch (_) {}
   });
 
@@ -614,6 +623,12 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     }
   });
 
+  const handleBackToServerList = useStableCallback(() => {
+    explicitServerListRef.current = true;
+    setSelectedServerId(null);
+    setSelectedChannelId(null);
+  });
+
   const handleViewChange = useStableCallback((nextView) => {
     if (nextView === "dms") {
       const preferred = lastViewedDmIdRef.current;
@@ -629,18 +644,21 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
         setSelectedChannelId(dmList[0].id);
       }
     } else if (nextView === "servers") {
-      const sid = selectedServerIdRef.current || (servers.length > 0 ? servers[0].id : null);
-      if (sid) {
-        if (!selectedServerIdRef.current) setSelectedServerId(sid);
-        const activeList = channelsBelongToServerRef.current === sid ? channels : (channelsByServerRef.current[sid] || []);
-        selectServerTextChannel(sid, activeList);
-        loadChannels(sid);
+      if (!explicitServerListRef.current) {
+        const sid = selectedServerIdRef.current || (servers.length > 0 ? servers[0].id : null);
+        if (sid) {
+          if (!selectedServerIdRef.current) setSelectedServerId(sid);
+          const activeList = channelsBelongToServerRef.current === sid ? channels : (channelsByServerRef.current[sid] || []);
+          selectServerTextChannel(sid, activeList);
+          loadChannels(sid);
+        }
       }
     }
     setView(nextView);
   });
 
   const handleSelectServer = useStableCallback((id) => {
+    explicitServerListRef.current = false;
     setSelectedServerId(id);
     setView("servers");
     if (id) {
@@ -677,6 +695,21 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
       if (servers[i].id === sid) { sname = servers[i].name; break; }
     }
     setModalData({ ...data, serverId: sid, serverName: sname, user });
+  });
+
+  const openServerModal = useStableCallback((kind) => {
+    const sid = selectedServerIdRef.current;
+    let sname = null;
+    let icon = "🌐";
+    for (let i = 0, len = servers.length; i < len; i++) {
+      if (servers[i].id === sid) {
+        sname = servers[i].name;
+        icon = servers[i].icon_emoji || "🌐";
+        break;
+      }
+    }
+    setModalData({ serverId: sid, serverName: sname, icon_emoji: icon, user });
+    setModal(kind);
   });
 
   const handleChannelsChange = useStableCallback(() => {
@@ -768,6 +801,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
   });
 
   const handleServerDeleted = useStableCallback(() => {
+    explicitServerListRef.current = false;
     loadServers();
     setSelectedServerId(null);
     setSelectedChannelId(null);
@@ -905,6 +939,91 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
     return undefined;
   }, [servers, selectedServerId]);
 
+  const renderActiveView = () => {
+    if (view === "settings") {
+      return (
+        <SettingsModal
+          user={user}
+          api={api}
+          baseUrl={baseUrl}
+          onClose={() => handleViewChange("servers")}
+          onProfileSaved={onProfileSaved}
+        />
+      );
+    }
+    
+    if (view === "dms") {
+      return (
+        <DMsSplitView 
+          dmList={dmList}
+          unread={unread}
+          mentionByChannel={mentionByChannel}
+          onDmSelect={handleDmSelect}
+          onOpenModal={setModal}
+          selectedChannelId={selectedChannelId}
+          currentChannel={currentChannel}
+          user={user}
+          baseUrl={baseUrl}
+          token={token}
+          api={api}
+          ws={ws}
+          mentionableUsers={mentionableUsers}
+          onOpenDM={handleOpenDM}
+          onUnreadClear={handleUnreadClear}
+          onMentionClear={handleMentionClear}
+          onMessageReceived={handleMessageReceived}
+          onMentionReceived={handleMentionReceived}
+          onMembersRefresh={handleMembersRefresh}
+          onActivity={refreshUiState}
+          onCall={(channelId) => webrtc.joinVoice(channelId)}
+        />
+      );
+    }
+
+    if (view === "servers") {
+      if (!selectedServerId) {
+        return (
+          <ServersView 
+            servers={servers}
+            unreadByServer={unreadByServer}
+            mentionByServer={mentionByServer}
+            onSelectServer={handleSelectServer}
+            onOpenModal={setModal}
+          />
+        );
+      }
+      return (
+        <ServerSplitView 
+           serverName={currentServerName}
+           channels={channels}
+           unread={unread}
+           mentionByChannel={mentionByChannel}
+           onSelectChannel={handleSelectChannel}
+           selectedChannelId={selectedChannelId}
+           currentChannel={currentChannel}
+           user={user}
+           baseUrl={baseUrl}
+           token={token}
+           api={api}
+           ws={ws}
+           mentionableUsers={mentionableUsers}
+           onOpenDM={handleOpenDM}
+           onUnreadClear={handleUnreadClear}
+           onMentionClear={handleMentionClear}
+           onMessageReceived={handleMessageReceived}
+           onMentionReceived={handleMentionReceived}
+           onMembersRefresh={handleMembersRefresh}
+           onActivity={refreshUiState}
+           onCall={(channelId) => webrtc.joinVoice(channelId)}
+           members={members}
+           serverId={selectedServerId}
+           onOpenModal={setModal}
+           onServerModal={openServerModal}
+        />
+      );
+    }
+  };
+
   return (
     <div className={styles.layout}>
       <header className={styles.titlebar} data-tauri-drag-region>
@@ -925,52 +1044,7 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
         </div>
       </header>
 
-      <aside className={styles.serverSidebar}>
-        <ServerSidebar
-          servers={servers}
-          selectedServerId={selectedServerId}
-          onSelectServer={handleSelectServer}
-          unread={unread}
-          unreadByServer={unreadByServer}
-          mentionByServer={mentionByServer}
-          totalDmUnread={totalDmUnread}
-          view={view}
-          onViewChange={handleViewChange}
-          onOpenModal={setModal}
-          onModalData={setModalData}
-          onServersChange={loadServers}
-        />
-      </aside>
-
-      <aside className={styles.channelSidebar}>
-        <ChannelSidebar
-          view={view}
-          serverName={currentServerName}
-          channels={channels}
-          selectedChannelId={selectedChannelId}
-          selectedServerId={selectedServerId}
-          onSelectChannel={handleSelectChannel}
-          dmList={dmList}
-          user={user}
-          members={members}
-          api={api}
-          unread={unread}
-          mentionByChannel={mentionByChannel}
-          onOpenModal={setModal}
-          onModalData={handleModalDataSet}
-          onChannelsChange={handleChannelsChange}
-          onChannelUpdated={handleChannelUpdated}
-          onDmSelect={handleDmSelect}
-          webrtc={webrtc}
-          currentVoiceChannelId={webrtc.currentChannelId}
-          activeVoiceTimers={activeVoiceTimers}
-          activeVoiceUsers={activeVoiceUsers}
-          onRefreshVoiceActive={refreshVoiceActive}
-          onVoiceUserAction={handleVoiceUserAction}
-        />
-      </aside>
-
-      <main className={styles.main}>
+      <div className={styles.mainContent}>
         {showFocusedView ? (
           <FocusedVideoView
             stream={focusedEntry.stream}
@@ -981,26 +1055,8 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
           />
         ) : (
           <>
-            <div className={styles.mainContent}>
-              <MessageArea
-                channel={currentChannel}
-                channelId={selectedChannelId}
-                user={user}
-                baseUrl={baseUrl}
-                token={token}
-                api={api}
-                ws={ws}
-                mentionableUsers={mentionableUsers}
-                showChannelHeader={view !== "dms"}
-                onOpenDM={handleOpenDM}
-                onUnreadClear={handleUnreadClear}
-                onMentionClear={handleMentionClear}
-                onMessageReceived={handleMessageReceived}
-                onMentionReceived={handleMentionReceived}
-                onMembersRefresh={handleMembersRefresh}
-                onActivity={refreshUiState}
-              />
-            </div>
+            {renderActiveView()}
+            
             {hasVideo && (
               <div className={styles.videoPanel} aria-label="Video streams">
                 <button
@@ -1050,16 +1106,15 @@ export default function MainApp({ user, onLogout, onProfileSaved }) {
             />
           </div>
         )}
-      </main>
+      </div>
 
-      <aside className={styles.membersSidebar}>
-        <MembersSidebar
-          members={members}
-          serverId={selectedServerId}
-          onOpenDM={handleOpenDM}
-          onOpenModal={setModal}
-        />
-      </aside>
+      <NavigationBar 
+        activeView={view} 
+        onViewChange={handleViewChange} 
+        unreadDMs={totalDmUnread} 
+        unreadServers={Object.values(unreadByServer).reduce((a, b) => a + b, 0) + Object.values(mentionByServer).reduce((a, b) => a + b, 0)} 
+        onBack={view === "servers" && selectedServerId ? handleBackToServerList : undefined}
+      />
 
       <Modals
         api={api}

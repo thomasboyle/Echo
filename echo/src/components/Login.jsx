@@ -33,7 +33,7 @@ export default function Login({ onLogin }) {
   return (
     <div className={styles.root}>
       <div className={styles.card}>
-        <h1 className={styles.logo}>NEXUS</h1>
+        <h1 className={styles.logo}>Echo</h1>
         <form onSubmit={handleSubmit} className={styles.form}>
           <input
             type="text"

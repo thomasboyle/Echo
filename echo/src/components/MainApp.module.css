@@ -1,24 +1,29 @@
 .layout {
-  display: grid;
-  grid-template-columns: 72px 240px 1fr 240px;
-  grid-template-rows: 32px 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  min-width: 1075px;
+  width: 100vw;
   overflow: hidden;
-  background: var(--bg-mid);
+  background: var(--neu-bg);
+  position: relative;
 }
 
 .titlebar {
-  grid-column: 1 / -1;
+  flex-shrink: 0;
   height: 32px;
   min-height: 32px;
-  background: var(--bg-darkest);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 8px;
   -webkit-app-region: drag;
   app-region: drag;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 
 .titlebarLeft {
@@ -29,8 +34,9 @@
 
 .logo {
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text-primary);
   font-size: 13px;
+  text-shadow: 1px 1px 2px var(--neu-shadow-dark);
 }
 
 .windowTitle {
@@ -57,10 +63,11 @@
   justify-content: center;
   font-size: 14px;
   line-height: 1;
+  transition: all 0.2s ease;
 }
 
 .titlebarBtn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
 }
 
@@ -69,38 +76,121 @@
   color: white;
 }
 
-.serverSidebar {
-  background: var(--bg-darkest);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 12px;
-}
-
-.channelSidebar {
-  background: var(--bg-dark);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.main {
-  background: var(--bg-mid);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
-}
-
 .mainContent {
   flex: 1;
-  min-height: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
+  position: relative;
+  /* Add padding for top nav overlay and bottom safe area */
+  padding-top: 70px; /* Titlebar height + Nav overlay */
+  padding-bottom: 6px; 
   display: flex;
   flex-direction: column;
 }
 
+.viewContainer {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  scrollbar-width: thin;
+}
+
+.viewContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+.viewContainer::-webkit-scrollbar-thumb {
+  background: var(--neu-shadow-dark);
+  border-radius: 4px;
+}
+
+.navBarCluster {
+  position: fixed;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%) translateZ(0);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navBackPill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 40px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.navOverlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 15px;
+  border-radius: 40px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.navOverlayTabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navBackButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 20px;
+  transition: color 0.3s ease, background 0.3s ease;
+}
+
+.navBackButton:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.navItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 6px 24px;
+  border-radius: 20px;
+  transition: all 0.3s ease;
+  transform: translateZ(0); /* Hardware accel */
+}
+
+.navItem:hover {
+  color: var(--text-primary);
+}
+
+.navItemActive {
+  color: var(--accent);
+}
+
+/* Add video panel classes back since MainApp uses them for floating videos */
 .videoPanel {
   flex-shrink: 0;
   display: flex;
@@ -108,7 +198,7 @@
   padding: 8px 0;
   min-height: 140px;
   max-height: 240px;
-  background: var(--bg-mid);
+  background: var(--neu-bg);
   position: relative;
 }
 
@@ -119,7 +209,7 @@
   height: 56px;
   padding: 0;
   border: none;
-  background: var(--bg-darkest);
+  background: var(--neu-bg);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 20px;
@@ -170,8 +260,8 @@
 }
 
 .videoSlot {
-  background: var(--bg-darkest);
-  border-radius: var(--radius-sm);
+  background: var(--neu-bg);
+  border-radius: var(--radius-md);
   width: 300px;
   min-height: 100px;
   aspect-ratio: 16 / 10;
@@ -181,11 +271,12 @@
   cursor: pointer;
   border: 2px solid transparent;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 4px 4px 8px var(--neu-shadow-dark),
+              inset -4px -4px 8px var(--neu-shadow-light);
 }
 
 .videoSlot:hover {
-  border-color: #c9a227;
-  box-shadow: 0 0 12px rgba(201, 162, 39, 0.35);
+  border-color: var(--accent);
 }
 
 .videoElement {
@@ -193,6 +284,7 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: var(--radius-md);
 }
 
 .videoLabel {
@@ -207,17 +299,15 @@
   text-align: center;
 }
 
-.voiceBarWrap {
-  flex-shrink: 0;
-}
-
 .focusedVideoWrap {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-darkest);
-  position: relative;
+  background: var(--neu-bg);
+  position: fixed;
+  inset: 0;
+  z-index: 2000; /* Above all */
 }
 
 .focusedVideoContainer {
@@ -240,16 +330,17 @@
 
 .focusedVideoBack {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 16px;
+  left: 16px;
   z-index: 2;
-  padding: 6px 12px;
+  padding: 8px 16px;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
+  backdrop-filter: blur(8px);
 }
 
 .focusedVideoBack:hover {
@@ -258,32 +349,25 @@
 
 .focusedVideoFullscreen {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 16px;
+  right: 16px;
   z-index: 2;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   cursor: pointer;
   font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  backdrop-filter: blur(8px);
 }
 
 .focusedVideoFullscreen:hover {
   background: rgba(0, 0, 0, 0.8);
-}
-
-.membersSidebar {
-  background: var(--bg-dark);
-  overflow-y: auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }

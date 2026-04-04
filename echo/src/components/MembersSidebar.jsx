@@ -67,10 +67,16 @@ export default React.memo(function MembersSidebar({ members, serverId, onOpenDM,
 
   if (!serverId) return null;
 
+  const total = (members || []).length;
+  const onlineCount = online.length;
+
   return (
     <div className={styles.root}>
       <div className={styles.header}>
-        MEMBERS — {(members || []).length}
+        <span className={styles.headerTitle}>Members</span>
+        <span className={styles.headerMeta} title={`${onlineCount} online, ${total} total`}>
+          {onlineCount} online · {total} total
+        </span>
       </div>
       <div className={styles.virtualList} ref={listContainerRef}>
         {listHeight > 0 && (

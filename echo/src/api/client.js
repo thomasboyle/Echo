@@ -95,12 +95,17 @@ function createApi(baseUrl, token) {
         method: "DELETE",
         headers: authHeaders(),
       }).then(parseJson),
-    updateServer: (serverId, name) =>
-      fetch(`${base}/servers/${serverId}`, {
+    updateServer: (serverId, nameOrPayload) => {
+      const body =
+        typeof nameOrPayload === "string"
+          ? { name: (nameOrPayload || "").trim() || "Server" }
+          : { ...nameOrPayload };
+      return fetch(`${base}/servers/${serverId}`, {
         method: "PATCH",
         headers: authHeaders(),
-        body: JSON.stringify({ name: (name || "").trim() || "Server" }),
-      }).then(parseJson),
+        body: JSON.stringify(body),
+      }).then(parseJson);
+    },
     getChannels: (serverId) =>
       fetch(`${base}/servers/${serverId}/channels`, { headers: authHeaders() }).then(parseJson),
     getVoiceActive: (serverId) =>
